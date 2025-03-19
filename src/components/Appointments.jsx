@@ -5,10 +5,6 @@ export default function Appointments({ appointments, setSelectedAppointment, set
         <h2 className="text-2xl font-bold text-gray-800">
           Appointments
         </h2>
-        <button className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600 transition duration-300 !rounded-button whitespace-nowrap">
-          <i className="fas fa-plus mr-2"></i>
-          New Appointment
-        </button>
       </div>
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
