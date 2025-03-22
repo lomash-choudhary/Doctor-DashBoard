@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import * as echarts from "echarts";
-import { useForm, useFieldArray } from "react-hook-form"; // Add this import
+import { useForm, useFieldArray } from "react-hook-form";
 import NavBar from "@/components/navBar";
 import SideBar from "@/components/sideBar";
 import StatsCard from "@/components/StatsCard";
@@ -11,18 +11,16 @@ import Schedule from "@/components/Schedule";
 import Hospitals from "@/components/Hospitals";
 import Appointments from "@/components/Appointments";
 import Patients from "@/components/Patients";
-import LoginModal from "@/components/login/LoginModal";
 import DoctorProfileModal from "@/components/profile/DoctorProfileModal";
 import TimeSlotModal from "@/components/timeslot/TimeSlotModal";
 import LeaveRequestModal from "@/components/leave/LeaveRequestModal";
 import AppointmentModal from "@/components/appointment/AppointmentModal";
+import { getDoctorInfo, logoutDoctor, addDoctorTimeSlot } from "@/services/api";
 
 const App = () => {
   const [selectedTab, setSelectedTab] = useState("dashboard");
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showTimeSlotModal, setShowTimeSlotModal] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
@@ -32,6 +30,9 @@ const App = () => {
     start: "09:00",
     end: "17:00",
     isRecurring: true,
+    startDate: "",
+    endDate: "",
+    capacity: 1,
   });
   const [newLeave, setNewLeave] = useState({
     startDate: "",
@@ -39,11 +40,12 @@ const App = () => {
     reason: "",
   });
 
-  // Add these new states for login modal
-  const [currentStep, setCurrentStep] = useState(1);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [previewImage, setPreviewImage] = useState(null);
+  // Add states for doctor data
+  const [doctorProfile, setDoctorProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [appointments, setAppointments] = useState([]);
+  const [patients, setPatients] = useState([]);
 
   // Define weekDays object
   const weekDays = {
@@ -56,7 +58,7 @@ const App = () => {
     Sunday: { start: "", end: "", capacity: "" },
   };
 
-  // Set up React Hook Form
+  // React Hook Form setup
   const {
     register,
     handleSubmit,
@@ -81,7 +83,7 @@ const App = () => {
     },
   });
 
-  // Set up field array for clinic addresses
+  // Field array for clinic addresses
   const {
     fields: clinicFields,
     append: appendClinic,
@@ -103,244 +105,215 @@ const App = () => {
     }
   };
 
-  // Form submission handler
-  const onSubmit = (data) => {
-    console.log("Form data submitted:", data);
-    // Process form submission
-    setTimeout(() => {
-      setIsAuthenticated(true);
-      setShowLoginModal(false);
-      reset();
-      setCurrentStep(1);
-
-      // Show success message
-      const successDiv = document.createElement("div");
-      successDiv.className =
-        "fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
-      successDiv.innerHTML =
-        '<i class="fas fa-check-circle mr-2"></i> Account created successfully!';
-      document.body.appendChild(successDiv);
-      setTimeout(() => successDiv.remove(), 3000);
-    }, 1500);
-  };
-
-  const doctorProfile = {
-    id: "d1",
-    name: "Dr. James Anderson",
-    username: "dr.anderson",
-    email: "james.anderson@medical.com",
-    password: "hashedPassword123",
-    doctorAvatarURL:
-      "https://public.readdy.ai/ai/img_res/1cf9710de2e49c3b2641a4274637bc24.jpg",
-    specialization: "Cardiologist",
-    licenseNumber: "MD-2025-1234",
-    experience: 15,
-    hospitals: [
-      {
-        id: "h1",
-        name: "Metropolitan Medical Center",
-        image:
-          "https://public.readdy.ai/ai/img_res/fa7ccca371f595557a558559c735b32c.jpg",
-        address: "123 Medical Plaza, New York, NY 10001",
-        joinDate: "2023-01-15",
-        status: "active",
-      },
-      {
-        id: "h2",
-        name: "Central City Hospital",
-        image:
-          "https://public.readdy.ai/ai/img_res/4f103689c0bad8000177a0e76e749b17.jpg",
-        address: "456 Health Avenue, New York, NY 10002",
-        joinDate: "2024-03-01",
-        status: "active",
-      },
-    ],
-    hospitalRequests: [
-      {
-        id: "hr1",
-        hospitalName: "St. Mary Medical Center",
-        hospitalImage:
-          "https://public.readdy.ai/ai/img_res/146ba27ae65524582753449b9adc3008.jpg",
-        requestDate: "2025-02-18",
-        status: "pending",
-        message:
-          "We would be honored to have you join our cardiology department. Your expertise would be a valuable addition to our team.",
-      },
-    ],
-    leaves: [
-      {
-        startDate: "2025-03-15",
-        endDate: "2025-03-20",
-        reason: "Annual Medical Conference",
-        status: "approved",
-      },
-    ],
-    availability: {
-      Monday: [
-        { start: "09:00", end: "12:00", isAvailable: true, isRecurring: true },
-        { start: "14:00", end: "17:00", isAvailable: true, isRecurring: true },
-      ],
-      Tuesday: [
-        { start: "09:00", end: "12:00", isAvailable: true, isRecurring: true },
-        { start: "14:00", end: "17:00", isAvailable: true, isRecurring: true },
-      ],
-      Wednesday: [
-        { start: "09:00", end: "12:00", isAvailable: true, isRecurring: true },
-        { start: "14:00", end: "17:00", isAvailable: true, isRecurring: true },
-      ],
-      Thursday: [
-        { start: "09:00", end: "12:00", isAvailable: true, isRecurring: true },
-        { start: "14:00", end: "17:00", isAvailable: true, isRecurring: true },
-      ],
-      Friday: [
-        { start: "09:00", end: "12:00", isAvailable: true, isRecurring: true },
-        { start: "14:00", end: "17:00", isAvailable: true, isRecurring: true },
-      ],
-    },
-  };
-
-  const [loginForm, setLoginForm] = useState({
-    email: "",
-    password: "",
-  });
-
-  const [signupForm, setSignupForm] = useState({
-    username: "",
-    name: "",
-    email: "",
-    password: "",
-    doctorAvatarURL: "No Profile Picture",
-    specialization: "",
-    licenseNumber: "",
-    yearsOfExperience: "",
-    consultationFee: "",
-    averageConsultationTime: "",
-    locationsOfDoctor: "",
-    hospitalJoined: "",
-  });
-
-  const handleLogin = () => {
-    if (loginForm.email && loginForm.password) {
-      setIsAuthenticated(true);
-      setShowLoginModal(false);
-      const successDiv = document.createElement("div");
-      successDiv.className =
-        "fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
-      successDiv.innerHTML =
-        '<i class="fas fa-check-circle mr-2"></i> Login successful!';
-      document.body.appendChild(successDiv);
-      setTimeout(() => successDiv.remove(), 3000);
-    }
-  };
-
-  const handleSignup = () => {
-    const requiredFields = [
-      "name",
-      "username",
-      "email",
-      "password",
-      "specialization",
-    ];
-    const emptyFields = requiredFields.filter((field) => !signupForm[field]);
-
-    if (emptyFields.length > 0) {
-      const errorDiv = document.createElement("div");
-      errorDiv.className =
-        "fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg";
-      errorDiv.textContent = "Please fill in all required fields";
-      document.body.appendChild(errorDiv);
-      setTimeout(() => errorDiv.remove(), 3000);
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(signupForm.email)) {
-      const errorDiv = document.createElement("div");
-      errorDiv.className =
-        "fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg";
-      errorDiv.textContent = "Please enter a valid email address";
-      document.body.appendChild(errorDiv);
-      setTimeout(() => errorDiv.remove(), 3000);
-      return;
-    }
-
-    const username = signupForm.username.toLowerCase().trim();
-    if (username !== signupForm.username) {
-      const errorDiv = document.createElement("div");
-      errorDiv.className =
-        "fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg";
-      errorDiv.textContent = "Username must be lowercase and without spaces";
-      document.body.appendChild(errorDiv);
-      setTimeout(() => errorDiv.remove(), 3000);
-      return;
-    }
-
-    setIsAuthenticated(true);
-    setShowLoginModal(false);
-    const successDiv = document.createElement("div");
-    successDiv.className =
-      "fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
-    successDiv.innerHTML =
-      '<i class="fas fa-check-circle mr-2"></i> Account created successfully!';
-    document.body.appendChild(successDiv);
-    setTimeout(() => successDiv.remove(), 3000);
-  };
-
-  const appointments = [
-    {
-      id: "a1",
-      patientName: "Alexandra Thompson",
-      patientImage:
-        "https://public.readdy.ai/ai/img_res/ea10c4e03f577f9fdf1846ea2cdcc466.jpg",
-      date: "2025-02-20",
-      time: "09:30 AM",
-      status: "upcoming",
-      type: "Regular Checkup",
-      symptoms: "Mild fever, headache",
-    },
-    // ... rest of appointments array
-  ];
-
-  const patients = [
-    {
-      id: "p1",
-      name: "Christopher Wilson",
-      image:
-        "https://public.readdy.ai/ai/img_res/aa8d6225f9ca7e74880719ee6bc60fd0.jpg",
-      age: 45,
-      gender: "Male",
-      lastVisit: "2025-02-15",
-      condition: "Hypertension",
-      status: "Under Treatment",
-    },
-    {
-      id: "a2",
-      patientName: "Richard Martinez",
-      patientImage:
-        "https://public.readdy.ai/ai/img_res/ea87d85054dd105f9cc308676135d8cf.jpg",
-      date: "2025-02-20",
-      time: "10:30 AM",
-      status: "upcoming",
-      type: "Follow-up",
-      symptoms: "Post-surgery review",
-    },
-    {
-      id: "a3",
-      patientName: "Isabella Chen",
-      patientImage:
-        "https://public.readdy.ai/ai/img_res/6e886bdd66b5f68888f3794575dfce6a.jpg",
-      date: "2025-02-20",
-      time: "02:00 PM",
-      status: "upcoming",
-      type: "New Patient",
-      symptoms: "Chronic back pain",
-    },
-  ];
-
+  // Fetch doctor data on component mount
   useEffect(() => {
+    const fetchDoctorData = async () => {
+      try {
+        setLoading(true);
+
+        // Get username from localStorage
+        const username = localStorage.getItem("doctorUsername");
+
+        if (!username) {
+          console.error("No username found in localStorage");
+          window.location.href = "/login";
+          return;
+        }
+        console.log("Fetching data for username:", username);
+
+        try {
+          // Add delay to ensure cookies are properly set
+          // This can help with race conditions between login and data fetching
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          const response = await getDoctorInfo(username);
+
+          console.log("Full API response:", response);
+
+          // Check if response data exists and has the expected structure
+          if (response && response.data) {
+            setDoctorProfile(response.data);
+            console.log("Successfully fetched doctor profile:", response.data);
+
+            // Parse appointments from doctor data if they exist
+            if (
+              response.data.appointmentsTrackOfDoctor &&
+              Array.isArray(response.data.appointmentsTrackOfDoctor)
+            ) {
+              setAppointments(
+                response.data.appointmentsTrackOfDoctor.map((appointment) => ({
+                  id:
+                    appointment._id ||
+                    `a-${Math.random().toString(36).substr(2, 9)}`,
+                  patientName: appointment.patientName || "Unknown Patient",
+                  patientImage:
+                    appointment.patientImage ||
+                    "https://via.placeholder.com/150",
+                  date:
+                    new Date(
+                      appointment.appointmentDate
+                    ).toLocaleDateString() || "N/A",
+                  time: appointment.appointmentTime || "N/A",
+                  status: appointment.status?.toLowerCase() || "pending",
+                  type: appointment.appointmentType || "Regular Checkup",
+                  symptoms: appointment.symptoms || "Not specified",
+                }))
+              );
+            }
+
+            // If no real appointments exist, empty array is fine
+            console.log("Appointments loaded:", appointments.length);
+          } else {
+            console.error("Invalid response structure:", response);
+            throw new Error("Invalid response from server");
+          }
+        } catch (apiError) {
+          console.error("API Error:", apiError);
+
+          // If we get an authentication error, it might be that the cookie is not being sent correctly
+          if (
+            apiError.message.includes("Authentication failed") ||
+            apiError.message.includes("Unauthorized") ||
+            apiError.message.includes("Unauthroized")
+          ) {
+            localStorage.removeItem("doctorUsername");
+            window.location.href = "/login";
+            return;
+          }
+
+          // For other errors, try refreshing once
+          if (!window.hasAttemptedRefresh) {
+            window.hasAttemptedRefresh = true;
+            console.log("Attempting page refresh to restore session...");
+            window.location.reload();
+            return;
+          }
+
+          throw apiError;
+        }
+
+        setLoading(false);
+      } catch (err) {
+        console.error("Error fetching doctor data:", err);
+        setError(err.message || "Failed to fetch doctor data");
+        setLoading(false);
+
+        // If authentication error, redirect to login
+        if (
+          err.message.includes("Authentication failed") ||
+          err.message.includes("No access token found") ||
+          err.message.includes("Unauthorized") ||
+          err.message.includes("Bad Request")
+        ) {
+          // Clear localStorage and redirect to login
+          localStorage.removeItem("doctorUsername");
+          window.location.href = "/login";
+        }
+      }
+    };
+
+    fetchDoctorData();
+  }, []);
+
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      const username = localStorage.getItem("doctorUsername");
+      if (!username) {
+        throw new Error("No username found");
+      }
+
+      await logoutDoctor(username);
+
+      // Redirect to login page after successful logout
+      window.location.href = "/login";
+
+      // Show success notification
+      const successDiv = document.createElement("div");
+      successDiv.className =
+        "fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
+      successDiv.innerHTML =
+        '<i class="fas fa-check-circle mr-2"></i> Logout successful!';
+      document.body.appendChild(successDiv);
+      setTimeout(() => successDiv.remove(), 3000);
+    } catch (error) {
+      console.error("Logout error:", error);
+
+      // Show error notification
+      const errorDiv = document.createElement("div");
+      errorDiv.className =
+        "fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
+      errorDiv.innerHTML =
+        '<i class="fas fa-exclamation-circle mr-2"></i> Failed to logout. Please try again.';
+      document.body.appendChild(errorDiv);
+      setTimeout(() => errorDiv.remove(), 3000);
+    }
+  };
+
+  // Initialize charts with real data
+  useEffect(() => {
+    // Skip if either element doesn't exist or we have no doctor data
+    if (
+      !document.getElementById("patientStatsChart") ||
+      !document.getElementById("appointmentChart") ||
+      !doctorProfile
+    )
+      return;
+
+    // Get real data or use sensible defaults
+    const hasAppointments =
+      doctorProfile.appointmentsTrackOfDoctor &&
+      Array.isArray(doctorProfile.appointmentsTrackOfDoctor) &&
+      doctorProfile.appointmentsTrackOfDoctor.length > 0;
+
+    // Initialize patient stats chart
     const patientStatsChart = echarts.init(
       document.getElementById("patientStatsChart")
     );
+
+    let patientStatsData;
+
+    if (hasAppointments) {
+      // Get data from the past 7 days
+      const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ...
+
+      // Initialize arrays with zeros
+      const newPatients = Array(7).fill(0);
+      const followUps = Array(7).fill(0);
+
+      // Populate with real data
+      doctorProfile.appointmentsTrackOfDoctor.forEach((appt) => {
+        if (!appt.appointmentDate) return;
+
+        const appointmentDate = new Date(appt.appointmentDate);
+        const diffDays = Math.floor(
+          (now - appointmentDate) / (24 * 60 * 60 * 1000)
+        );
+
+        // Only include appointments from the last 7 days
+        if (diffDays >= 0 && diffDays < 7) {
+          const index = (dayOfWeek - diffDays + 7) % 7; // Map to chart index
+
+          if (appt.isNewPatient) {
+            newPatients[index]++;
+          } else {
+            followUps[index]++;
+          }
+        }
+      });
+
+      patientStatsData = { days, newPatients, followUps };
+    } else {
+      // No data, use empty arrays
+      patientStatsData = {
+        days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+        newPatients: [0, 0, 0, 0, 0, 0, 0],
+        followUps: [0, 0, 0, 0, 0, 0, 0],
+      };
+    }
+
     const patientStatsOption = {
       animation: false,
       tooltip: {
@@ -351,7 +324,7 @@ const App = () => {
       },
       xAxis: {
         type: "category",
-        data: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+        data: patientStatsData.days,
       },
       yAxis: {
         type: "value",
@@ -361,7 +334,7 @@ const App = () => {
           name: "New Patients",
           type: "line",
           smooth: true,
-          data: [5, 8, 6, 9, 7, 4, 3],
+          data: patientStatsData.newPatients,
           itemStyle: {
             color: "#11B981",
           },
@@ -370,7 +343,7 @@ const App = () => {
           name: "Follow-ups",
           type: "line",
           smooth: true,
-          data: [8, 12, 10, 15, 11, 6, 5],
+          data: patientStatsData.followUps,
           itemStyle: {
             color: "#11B981",
           },
@@ -379,9 +352,39 @@ const App = () => {
     };
     patientStatsChart.setOption(patientStatsOption);
 
+    // Initialize appointment distribution chart
     const appointmentChart = echarts.init(
       document.getElementById("appointmentChart")
     );
+
+    let appointmentDistribution;
+
+    if (hasAppointments) {
+      // Count appointment types
+      const typeCount = {};
+      doctorProfile.appointmentsTrackOfDoctor.forEach((appt) => {
+        const type = appt.appointmentType || "Regular Checkup";
+        typeCount[type] = (typeCount[type] || 0) + 1;
+      });
+
+      // Convert to chart format
+      appointmentDistribution = Object.entries(typeCount).map(
+        ([name, value], index) => ({
+          value,
+          name,
+          itemStyle: {
+            color:
+              index === 0 ? "#11B981" : index === 1 ? "#0EA5E9" : "#F59E0B",
+          },
+        })
+      );
+    } else {
+      // No data, use empty placeholder
+      appointmentDistribution = [
+        { value: 0, name: "No Data", itemStyle: { color: "#CBD5E1" } },
+      ];
+    }
+
     const appointmentOption = {
       animation: false,
       tooltip: {
@@ -413,15 +416,7 @@ const App = () => {
               fontWeight: "bold",
             },
           },
-          data: [
-            {
-              value: 45,
-              name: "Regular Checkup",
-              itemStyle: { color: "#11B981" },
-            },
-            { value: 30, name: "Follow-up", itemStyle: { color: "#11B981" } },
-            { value: 25, name: "New Patient", itemStyle: { color: "#F59E0B" } },
-          ],
+          data: appointmentDistribution,
         },
       ],
     };
@@ -431,32 +426,171 @@ const App = () => {
       patientStatsChart.dispose();
       appointmentChart.dispose();
     };
-  }, []);
+  }, [doctorProfile, loading]); // Add doctorProfile as dependency
 
-  // ... rest of the component JSX
+  // Function to add a new time slot
+  const addTimeSlot = async (timeSlotData) => {
+    try {
+      setLoading(true);
+
+      // Format the time slot data for the API to match the expected backend format
+      const formattedTimeSlot = {
+        dayName: timeSlotData.day,
+        slots: [
+          {
+            startTime: timeSlotData.start,
+            endTime: timeSlotData.end,
+            maxPatientsInTheSlot: timeSlotData.capacity || 1,
+            status: "ACTIVE",
+            recurring: timeSlotData.isRecurring,
+            // Add exceptions array (empty by default)
+            exceptions: timeSlotData.exceptions || [],
+            // Add date range if not recurring
+            ...(timeSlotData.isRecurring
+              ? {}
+              : {
+                  startDate: timeSlotData.startDate,
+                  endDate: timeSlotData.endDate,
+                }),
+          },
+        ],
+      };
+
+      console.log("Sending formatted time slot data:", formattedTimeSlot);
+
+      // Display a temporary message for the user to understand what's happening
+      const infoDiv = document.createElement("div");
+      infoDiv.className =
+        "fixed top-4 right-4 bg-blue-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
+      infoDiv.innerHTML = `<i class="fas fa-info-circle mr-2"></i> Adding new time slot...`;
+      document.body.appendChild(infoDiv);
+
+      // Call the API to add the time slot
+      const response = await addDoctorTimeSlot(formattedTimeSlot);
+
+      infoDiv.remove();
+
+      // Handle successful response
+      console.log("Time slot update response:", response);
+
+      // Show success notification
+      const successDiv = document.createElement("div");
+      successDiv.className =
+        "fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
+      successDiv.innerHTML = `<i class="fas fa-check-circle mr-2"></i> Time slot added successfully!`;
+      document.body.appendChild(successDiv);
+
+      // Refresh doctor data to show the new time slot
+      const username = localStorage.getItem("doctorUsername");
+      const updatedDataResponse = await getDoctorInfo(username);
+      setDoctorProfile(updatedDataResponse.data);
+
+      setTimeout(() => successDiv.remove(), 3000);
+      return response;
+    } catch (error) {
+      console.error("Failed to add time slot:", error);
+
+      // Remove modal info div if it exists
+      const existingInfoDiv = document.querySelector(
+        ".fixed.top-4.right-4.bg-blue-500"
+      );
+      if (existingInfoDiv) {
+        existingInfoDiv.remove();
+      }
+
+      // Show error notification with details
+      const errorDiv = document.createElement("div");
+      errorDiv.className =
+        "fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex flex-col";
+      errorDiv.innerHTML = `
+        <div class="flex items-center">
+          <i class="fas fa-exclamation-circle mr-2"></i>
+          <span>Failed to add time slot: ${error.message}</span>
+        </div>
+        <div class="mt-2 text-xs">
+          Please check the console for more details.
+        </div>
+      `;
+      document.body.appendChild(errorDiv);
+      setTimeout(() => errorDiv.remove(), 5000);
+
+      // Re-throw to let the modal handle the error state
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Show loading spinner while data is being fetched
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-emerald-500"></div>
+        <p className="ml-4 text-lg font-semibold text-gray-700">
+          Loading your dashboard...
+        </p>
+      </div>
+    );
+  }
+
+  // Show error message if data fetching failed
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded">
+          <p className="font-bold">Error</p>
+          <p>{error}</p>
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ... All JSX markup remains the same ... */}
+      {/* Navigation Bar */}
       <NavBar
-        isAuthenticated={isAuthenticated}
+        isAuthenticated={true} // Always authenticated since login is handled elsewhere
         doctorProfile={doctorProfile}
         setShowProfileModal={setShowProfileModal}
-        setShowLoginModal={setShowLoginModal}
+        onLogout={handleLogout}
       />
       <div className="flex">
         {/* Sidebar */}
-        <SideBar setSelectedTab={setSelectedTab} selectedTab={selectedTab} />
+        <SideBar setSelectedTab={setSelectedTab} selectedTab={setSelectedTab} />
         {/* Main Content */}
         <div className="ml-64 flex-1 p-8">
           {selectedTab === "dashboard" && (
             <div className="space-y-6">
-              {/* Stats Cards */}
-              <StatsCard />
-              {/* Charts */}
-              <Charts />
-              {/* Recent Activity */}
-              <RecentActivity />
+              {/* Stats Cards - pass doctorProfile */}
+              <StatsCard doctorProfile={doctorProfile} />
+
+              {/* Charts - pass doctorProfile */}
+              <Charts doctorProfile={doctorProfile} />
+
+              {/* Recent Activity - use appointments from API */}
+              <RecentActivity
+                appointments={doctorProfile?.appointmentsTrackOfDoctor?.map(
+                  (appt) => ({
+                    id:
+                      appt._id ||
+                      `a-${Math.random().toString(36).substring(2, 9)}`,
+                    patientName: appt.patientName || "Unknown Patient",
+                    patientImage:
+                      appt.patientImage || "https://via.placeholder.com/150",
+                    date:
+                      new Date(appt.appointmentDate).toLocaleDateString() ||
+                      "N/A",
+                    time: appt.appointmentTime || "N/A",
+                    status: appt.status?.toLowerCase() || "pending",
+                  })
+                )}
+              />
             </div>
           )}
           {selectedTab === "schedule" && (
@@ -479,28 +613,7 @@ const App = () => {
           {selectedTab === "patients" && <Patients patients={patients} />}
         </div>
       </div>
-      {/* Login Modal */}
-      <LoginModal
-        showLoginModal={showLoginModal}
-        setShowLoginModal={setShowLoginModal}
-        currentStep={currentStep}
-        setCurrentStep={setCurrentStep}
-        register={register}
-        errors={errors}
-        handleSubmit={handleSubmit}
-        onSubmit={onSubmit}
-        isSubmitting={isSubmitting}
-        showPassword={showPassword}
-        setShowPassword={setShowPassword}
-        showConfirmPassword={showConfirmPassword}
-        setShowConfirmPassword={setShowConfirmPassword}
-        previewImage={previewImage}
-        handleImageChange={handleImageChange}
-        clinicFields={clinicFields}
-        removeClinic={removeClinic}
-        appendClinic={appendClinic}
-        weekDays={weekDays}
-      />
+
       {/* Doctor Profile Modal */}
       <DoctorProfileModal
         showProfileModal={showProfileModal}
@@ -508,13 +621,17 @@ const App = () => {
         doctorProfile={doctorProfile}
         setShowTimeSlotModal={setShowTimeSlotModal}
       />
+
       {/* Time Slot Management Modal */}
       <TimeSlotModal
         showTimeSlotModal={showTimeSlotModal}
         setShowTimeSlotModal={setShowTimeSlotModal}
         newTimeSlot={newTimeSlot}
         setNewTimeSlot={setNewTimeSlot}
+        onSubmit={addTimeSlot}
+        isLoading={loading}
       />
+
       {/* Leave Request Modal */}
       <LeaveRequestModal
         showLeaveModal={showLeaveModal}
@@ -522,6 +639,7 @@ const App = () => {
         newLeave={newLeave}
         setNewLeave={setNewLeave}
       />
+
       {/* Appointment Details Modal */}
       <AppointmentModal
         showAppointmentModal={showAppointmentModal}

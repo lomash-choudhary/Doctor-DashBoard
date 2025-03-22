@@ -6,9 +6,9 @@ import ProfessionalInfoForm from "./ProfessionalInfoForm";
 import ScheduleForm from "./ScheduleForm";
 import FormNavigation from "./FormNavigation";
 
-export default function LoginModal({
-  showLoginModal,
-  setShowLoginModal,
+export default function SignUpModel({
+  showSignUpModel,
+  setShowSignUpModel,
   currentStep,
   setCurrentStep,
   register,
@@ -25,22 +25,40 @@ export default function LoginModal({
   clinicFields,
   removeClinic,
   appendClinic,
-  weekDays
+  weekDays,
+  handleNextStep,
+  handlePrevStep,
+  totalSteps,
+  trigger,
+  getValues,
+  setValue,
+  watch,
 }) {
-  if (!showLoginModal) return null;
+  if (!showSignUpModel) return null;
+
+  // Prevent default form submission on enter key
+  const preventEnterKeySubmission = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+    }
+  };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-8 max-w-4xl w-full">
-        <ModalHeader 
-          title="Doctor Portal" 
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl p-6 md:p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+        <ModalHeader
+          title="Care Setu Doctor Portal"
           subtitle="Complete your profile to join our medical network"
-          onClose={() => setShowLoginModal(false)} 
+          onClose={() => setShowSignUpModel(false)}
         />
 
         <ProgressSteps currentStep={currentStep} />
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="space-y-6"
+          onKeyDown={preventEnterKeySubmission}
+        >
           {currentStep === 1 && (
             <BasicInfoForm
               register={register}
@@ -51,14 +69,12 @@ export default function LoginModal({
               setShowConfirmPassword={setShowConfirmPassword}
               previewImage={previewImage}
               handleImageChange={handleImageChange}
+              watch={watch}
             />
           )}
 
           {currentStep === 2 && (
-            <ProfessionalInfoForm
-              register={register}
-              errors={errors}
-            />
+            <ProfessionalInfoForm register={register} errors={errors} />
           )}
 
           {currentStep === 3 && (
@@ -69,13 +85,16 @@ export default function LoginModal({
               removeClinic={removeClinic}
               appendClinic={appendClinic}
               weekDays={weekDays}
+              isSubmitting={isSubmitting}
             />
           )}
 
           <FormNavigation
             currentStep={currentStep}
-            setCurrentStep={setCurrentStep}
             isSubmitting={isSubmitting}
+            handleNextStep={handleNextStep}
+            handlePrevStep={handlePrevStep}
+            totalSteps={3}
           />
         </form>
       </div>
