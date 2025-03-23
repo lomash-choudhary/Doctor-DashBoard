@@ -1,10 +1,15 @@
-import React from "react";
+import React, { useState } from "react";
+import TimeSlotDetailsModal from "../timeslot/TimeSlotDetailsModal";
+import { formatTo12Hour } from "@/utils/timeFormatter";
 
 export default function WeeklySchedule({
   availability,
   setShowTimeSlotModal,
   setSelectedSlot,
 }) {
+  const [detailSlot, setDetailSlot] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+
   // Check if there's any schedule data
   const hasSchedule = Object.values(availability || {}).some(
     (slots) => Array.isArray(slots) && slots.length > 0
@@ -21,22 +26,33 @@ export default function WeeklySchedule({
     { day: "Sunday", icon: "calendar-week" },
   ];
 
+  // Handle click on a time slot to view details
+  const handleViewDetails = (day, slot) => {
+    const slotWithContext = {
+      ...slot,
+      day,
+    };
+    setDetailSlot(slotWithContext);
+    setShowDetailsModal(true);
+  };
+
   // Handle edit button click - prepare slot data for editing
   const handleEditSlot = (day, slot) => {
     // Create slot data for editing
-    const slotData = {
+    const slotForEdit = {
       day: day,
       start: slot.start,
       end: slot.end,
       capacity: slot.capacity || 1,
       isRecurring: true, // Weekly schedule slots are always recurring
       status: slot.isAvailable ? "ACTIVE" : "INACTIVE",
+      exceptions: slot.exceptions || [],
       isEditMode: true,
       originalStart: slot.start, // Track original start time for updating
     };
 
     // Set selected slot and open modal
-    setSelectedSlot(slotData);
+    setSelectedSlot(slotForEdit);
     setShowTimeSlotModal(true);
   };
 
@@ -54,6 +70,23 @@ export default function WeeklySchedule({
     });
     setShowTimeSlotModal(true);
   };
+
+  // Check if a slot has exceptions
+  const hasExceptions = (slot) => {
+    return slot.exceptions && slot.exceptions.length > 0;
+  };
+
+  // Enhance each slot with formatted time
+  const enhancedAvailability = {};
+  for (const [day, slots] of Object.entries(availability || {})) {
+    enhancedAvailability[day] = Array.isArray(slots)
+      ? slots.map((slot) => ({
+          ...slot,
+          startFormatted: formatTo12Hour(slot.start),
+          endFormatted: formatTo12Hour(slot.end),
+        }))
+      : [];
+  }
 
   return (
     <div className="animate-fadeIn">
@@ -89,36 +122,66 @@ export default function WeeklySchedule({
                 </button>
               </div>
 
-              {availability[day] && availability[day].length > 0 ? (
+              {enhancedAvailability[day] &&
+              enhancedAvailability[day].length > 0 ? (
                 <div className="ml-12 space-y-2">
-                  {availability[day].map((slot, index) => (
+                  {enhancedAvailability[day].map((slot, index) => (
                     <div
                       key={index}
                       className={`flex items-center justify-between px-3 py-1.5 rounded-md text-sm ${
                         slot.isAvailable
                           ? "bg-green-50 text-green-700 border border-green-200"
                           : "bg-red-50 text-red-700 border border-red-200"
+                      } ${
+                        hasExceptions(slot) ? "border-red-300 bg-red-50" : ""
                       }`}
                     >
-                      <div className="flex items-center">
+                      <div
+                        className="flex items-center flex-grow cursor-pointer"
+                        onClick={() => handleViewDetails(day, slot)}
+                      >
                         <i
                           className={`fas fa-${
                             slot.isAvailable ? "clock" : "times-circle"
                           } mr-1`}
                         ></i>
                         <span>
-                          {slot.start} - {slot.end}
+                          {slot.startFormatted} - {slot.endFormatted}
                         </span>
+
+                        {slot.capacity && (
+                          <span className="ml-2 text-xs bg-white bg-opacity-60 px-1 py-0.5 rounded">
+                            {slot.capacity} patients
+                          </span>
+                        )}
+
+                        {/* Display exception marker if present */}
+                        {hasExceptions(slot) && (
+                          <span className="ml-2 text-xs text-red-600">
+                            <i className="fas fa-exclamation-circle"></i>
+                          </span>
+                        )}
                       </div>
 
-                      {/* Edit button */}
-                      <button
-                        onClick={() => handleEditSlot(day, slot)}
-                        className="ml-2 text-gray-500 hover:text-blue-500"
-                        title="Edit time slot"
-                      >
-                        <i className="fas fa-edit"></i>
-                      </button>
+                      <div className="flex items-center space-x-2">
+                        {/* Edit button */}
+                        <button
+                          onClick={() => handleEditSlot(day, slot)}
+                          className="text-blue-500 hover:text-blue-700"
+                          title="Edit time slot"
+                        >
+                          <i className="fas fa-edit"></i>
+                        </button>
+
+                        {/* Info/Details button */}
+                        <button
+                          onClick={() => handleViewDetails(day, slot)}
+                          className="text-gray-500 hover:text-gray-700"
+                          title="View details"
+                        >
+                          <i className="fas fa-info-circle"></i>
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -153,6 +216,22 @@ export default function WeeklySchedule({
           </button>
         </div>
       )}
+
+      {/* Time Slot Details Modal */}
+      <TimeSlotDetailsModal
+        slot={detailSlot}
+        showModal={showDetailsModal}
+        setShowModal={setShowDetailsModal}
+        onEdit={() => {
+          setShowDetailsModal(false);
+          if (detailSlot) handleEditSlot(detailSlot.day, detailSlot);
+        }}
+        onDelete={() => {
+          setShowDetailsModal(false);
+          // Delete functionality would be added here if needed
+          alert("Delete functionality is only available on the Schedule page");
+        }}
+      />
     </div>
   );
 }

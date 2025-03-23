@@ -1,6 +1,8 @@
 // Base API URL - make sure it matches your backend
 const API_URL = "http://localhost:4000/api/v1";
 
+import { formatApiError } from "@/utils/errorHandler";
+
 /**
  * Base API call function with authorization headers
  * @param {string} endpoint - API endpoint
@@ -248,21 +250,8 @@ export const addDoctorTimeSlot = async (timeSlotData) => {
       body: JSON.stringify(formattedData),
     });
   } catch (error) {
-    // Transform error message to a user-friendly version
-    let errorMessage = "Failed to add time slot.";
-
-    if (error.message.includes("overlaps with existing time slot")) {
-      errorMessage =
-        "This time conflicts with another scheduled slot. Please choose a different time.";
-    } else if (error.message.includes("Doctor not found")) {
-      errorMessage =
-        "Your profile information could not be found. Please log in again.";
-    } else if (error.message.includes("Validation failed")) {
-      errorMessage =
-        "The time slot information is not valid. Please check all fields.";
-    }
-
-    throw new Error(errorMessage);
+    console.error("Failed to add time slot:", error);
+    throw new Error(formatApiError(error, "adding time slot"));
   }
 };
 
@@ -286,20 +275,8 @@ export const updateDoctorTimeSlot = async (updateData) => {
       body: JSON.stringify(formattedData),
     });
   } catch (error) {
-    // Transform error message to a user-friendly version
-    let errorMessage = "Failed to update time slot.";
-
-    if (error.message.includes("There is not timeslot avaiable")) {
-      errorMessage =
-        "This time slot no longer exists. It may have been deleted.";
-    } else if (error.message.includes("Doctor not found")) {
-      errorMessage =
-        "Your profile information could not be found. Please log in again.";
-    } else if (error.message.includes("Something went wrong while finding")) {
-      errorMessage = "We couldn't find the time slot you're trying to update.";
-    }
-
-    throw new Error(errorMessage);
+    console.error("Failed to update time slot:", error);
+    throw new Error(formatApiError(error, "updating time slot"));
   }
 };
 
@@ -323,20 +300,8 @@ export const deleteDoctorTimeSlot = async (deleteData) => {
       body: JSON.stringify(formattedData),
     });
   } catch (error) {
-    // Transform error message to a user-friendly version
-    let errorMessage = "Failed to delete time slot.";
-
-    if (error.message.includes("Time slot with start time")) {
-      errorMessage =
-        "We couldn't find this time slot. It may have already been deleted.";
-    } else if (error.message.includes("There is not timeslot avaiable")) {
-      errorMessage = "No time slots exist for this day.";
-    } else if (error.message.includes("Doctor not found")) {
-      errorMessage =
-        "Your profile information could not be found. Please log in again.";
-    }
-
-    throw new Error(errorMessage);
+    console.error("Failed to delete time slot:", error);
+    throw new Error(formatApiError(error, "deleting time slot"));
   }
 };
 

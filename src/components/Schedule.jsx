@@ -5,15 +5,20 @@ import {
   getDoctorInfo,
 } from "@/services/api";
 import TimeSlotActionMenu from "./timeslot/TimeSlotActionMenu";
+import TimeSlotDetailsModal from "./timeslot/TimeSlotDetailsModal";
+import { formatTo12Hour } from "@/utils/timeFormatter";
+import { formatApiError } from "@/utils/errorHandler";
 
 export default function Schedule({
   doctorProfile,
   setShowLeaveModal,
   setShowTimeSlotModal,
-  setSelectedSlot, // Add this prop
+  setSelectedSlot,
 }) {
   const [activeDay, setActiveDay] = useState("Monday");
   const [loading, setLoading] = useState(false);
+  const [detailSlot, setDetailSlot] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
 
   // Early return with loading message if doctorProfile is undefined or null
   if (!doctorProfile) {
@@ -58,9 +63,12 @@ export default function Schedule({
           const formattedSlots = daySlot.slots.map((slot) => ({
             start: slot.startTime,
             end: slot.endTime,
+            startFormatted: formatTo12Hour(slot.startTime),
+            endFormatted: formatTo12Hour(slot.endTime),
             capacity: slot.maxPatientsInTheSlot,
             isRecurring: slot.recurring,
             status: slot.status,
+            exceptions: slot.exceptions || [],
             // Add a flag for locally stored slots
             isLocalOnly: !!slot.isLocalOnly,
           }));
@@ -91,6 +99,17 @@ export default function Schedule({
   const leaves = Array.isArray(doctorProfile.leaves)
     ? doctorProfile.leaves
     : [];
+
+  // Show details of a time slot
+  const handleViewDetails = (slot) => {
+    // Add day information to the slot for context
+    const slotWithContext = {
+      ...slot,
+      day: activeDay,
+    };
+    setDetailSlot(slotWithContext);
+    setShowDetailsModal(true);
+  };
 
   // Handle time slot deletion
   const handleDeleteTimeSlot = async (slot) => {
@@ -141,11 +160,14 @@ export default function Schedule({
     } catch (error) {
       console.error("Failed to delete time slot:", error);
 
+      // Format the error for user-friendly display
+      const userMessage = formatApiError(error, "deleting time slot");
+
       // Show error notification
       const errorDiv = document.createElement("div");
       errorDiv.className =
         "fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
-      errorDiv.innerHTML = `<i class="fas fa-exclamation-circle mr-2"></i> Failed to delete time slot: ${error.message}`;
+      errorDiv.innerHTML = `<i class="fas fa-exclamation-circle mr-2"></i> ${userMessage}`;
       document.body.appendChild(errorDiv);
       setTimeout(() => errorDiv.remove(), 5000);
     } finally {
@@ -163,6 +185,7 @@ export default function Schedule({
       capacity: slot.capacity || 1,
       isRecurring: slot.isRecurring,
       status: slot.status || "ACTIVE",
+      exceptions: slot.exceptions || [],
       isEditMode: true,
       originalStart: slot.start, // Keep track of original start time for updating
     };
@@ -172,6 +195,25 @@ export default function Schedule({
 
     // Open the modal with the selected slot data
     setShowTimeSlotModal(true);
+  };
+
+  // Check if a slot has any exceptions
+  const hasExceptions = (slot) => {
+    return slot.exceptions && slot.exceptions.length > 0;
+  };
+
+  // Count upcoming exceptions (within the next 30 days)
+  const countUpcomingExceptions = (slot) => {
+    if (!slot.exceptions || !Array.isArray(slot.exceptions)) return 0;
+
+    const today = new Date();
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+    return slot.exceptions.filter((exception) => {
+      const exceptionDate = new Date(exception.expectedDateOfException);
+      return exceptionDate >= today && exceptionDate <= thirtyDaysFromNow;
+    }).length;
   };
 
   return (
@@ -213,9 +255,9 @@ export default function Schedule({
             </h3>
             <div className="mt-1 text-sm text-blue-700">
               <p>
-                You can now add multiple time slots per day, update existing
-                time slots, and delete time slots. Click on the actions menu
-                (...) next to a slot to edit or delete it.
+                Click on a time slot to view detailed information, including
+                patient capacity and exceptions. Use the actions menu (...) to
+                edit or delete.
               </p>
             </div>
           </div>
@@ -250,47 +292,64 @@ export default function Schedule({
           activeDaySlots.map((slot, index) => (
             <div
               key={index}
-              className={`flex items-center p-4 border rounded-lg ${
-                slot.isLocalOnly ? "border-amber-200 bg-amber-50" : ""
-              }`}
+              className={`border rounded-lg overflow-hidden ${
+                slot.isLocalOnly ? "border-amber-200" : "border-gray-200"
+              } ${hasExceptions(slot) ? "border-red-200" : ""}`}
             >
-              <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-              <span className="ml-4 text-gray-900 font-medium">
-                {slot.start} - {slot.end}
-              </span>
-              <span className="ml-4 px-3 py-1 bg-emerald-50 text-emerald-500 text-sm rounded-full">
-                {slot.isRecurring ? "Weekly" : "One-time"}
-              </span>
-              {slot.capacity && (
-                <span className="ml-4 text-gray-600 text-sm">
-                  Capacity: {slot.capacity} patients
+              {/* Main slot information - clickable to show details */}
+              <div
+                className={`flex items-center p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                  slot.isLocalOnly ? "bg-amber-50" : ""
+                } ${hasExceptions(slot) ? "bg-red-50" : ""}`}
+                onClick={() => handleViewDetails(slot)}
+              >
+                <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                <span className="ml-4 text-gray-900 font-medium">
+                  {slot.startFormatted} - {slot.endFormatted}
                 </span>
-              )}
-              {slot.status && (
-                <span
-                  className={`ml-4 px-3 py-1 text-xs rounded-full ${
-                    slot.status === "ACTIVE"
-                      ? "bg-green-100 text-green-600"
-                      : "bg-red-100 text-red-600"
-                  }`}
-                >
-                  {slot.status}
+                <span className="ml-4 px-3 py-1 bg-emerald-50 text-emerald-500 text-sm rounded-full">
+                  {slot.isRecurring ? "Weekly" : "One-time"}
                 </span>
-              )}
-              {slot.isLocalOnly && (
-                <span className="ml-auto px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded">
-                  <i className="fas fa-exclamation-triangle mr-1"></i>
-                  Local Only
-                </span>
-              )}
+                {slot.capacity && (
+                  <span className="ml-4 text-gray-600 text-sm">
+                    Capacity: {slot.capacity} patients
+                  </span>
+                )}
+                {slot.status && (
+                  <span
+                    className={`ml-4 px-3 py-1 text-xs rounded-full ${
+                      slot.status === "ACTIVE"
+                        ? "bg-green-100 text-green-600"
+                        : "bg-red-100 text-red-600"
+                    }`}
+                  >
+                    {slot.status}
+                  </span>
+                )}
 
-              {/* Actions menu */}
-              <div className="ml-auto">
-                <TimeSlotActionMenu
-                  onEdit={() => handleEditTimeSlot(slot)}
-                  onDelete={() => handleDeleteTimeSlot(slot)}
-                  isDisabled={loading}
-                />
+                {/* Show exceptions badge if there are any */}
+                {hasExceptions(slot) && (
+                  <span className="ml-4 px-3 py-1 text-xs rounded-full bg-red-100 text-red-600 flex items-center">
+                    <i className="fas fa-exclamation-circle mr-1"></i>
+                    {countUpcomingExceptions(slot)} exceptions
+                  </span>
+                )}
+
+                {slot.isLocalOnly && (
+                  <span className="ml-auto px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded mr-2">
+                    <i className="fas fa-exclamation-triangle mr-1"></i>
+                    Local Only
+                  </span>
+                )}
+
+                {/* Actions menu */}
+                <div className="ml-auto">
+                  <TimeSlotActionMenu
+                    onEdit={() => handleEditTimeSlot(slot)}
+                    onDelete={() => handleDeleteTimeSlot(slot)}
+                    isDisabled={loading}
+                  />
+                </div>
               </div>
             </div>
           ))
@@ -301,6 +360,21 @@ export default function Schedule({
           </div>
         )}
       </div>
+
+      {/* Time Slot Details Modal */}
+      <TimeSlotDetailsModal
+        slot={detailSlot}
+        showModal={showDetailsModal}
+        setShowModal={setShowDetailsModal}
+        onEdit={() => {
+          setShowDetailsModal(false);
+          if (detailSlot) handleEditTimeSlot(detailSlot);
+        }}
+        onDelete={() => {
+          setShowDetailsModal(false);
+          if (detailSlot) handleDeleteTimeSlot(detailSlot);
+        }}
+      />
 
       {/* Leave requests section */}
       <div className="mt-8">

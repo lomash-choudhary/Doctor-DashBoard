@@ -5,6 +5,8 @@ import TimeSelection from "./TimeSelection";
 import RecurringOption from "./RecurringOption";
 import ExceptionsSection from "./ExceptionsSection";
 import ModalActions from "./ModalActions";
+import { formatTo12Hour } from "@/utils/timeFormatter";
+import { formatApiError } from "@/utils/errorHandler";
 
 export default function TimeSlotModal({
   showTimeSlotModal,
@@ -165,7 +167,19 @@ export default function TimeSlotModal({
         })
         .catch((error) => {
           console.error("Time slot submission error:", error);
+          // Format error message in a user-friendly way
+          const context = isEditMode
+            ? "updating time slot"
+            : "adding time slot";
+          const errorMessage = formatApiError(error, context);
+
+          // Display error in the modal
           setApiStatus("error");
+          setErrors({
+            ...errors,
+            submission: errorMessage,
+          });
+
           // Keep modal open on error
         });
     }
@@ -175,6 +189,10 @@ export default function TimeSlotModal({
 
   // Set current date as default for exceptions
   const today = new Date().toISOString().split("T")[0];
+
+  // Display formatted times
+  const startTimeFormatted = formatTo12Hour(newTimeSlot.start);
+  const endTimeFormatted = formatTo12Hour(newTimeSlot.end);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -197,13 +215,30 @@ export default function TimeSlotModal({
               <div className="mt-2 text-sm text-blue-700">
                 <p>
                   {isEditMode
-                    ? "Update the details of this time slot. Changes will be saved to your schedule."
+                    ? `Update the details of this time slot (${startTimeFormatted} - ${endTimeFormatted}).`
                     : "Add a new time slot to your schedule. You can add multiple slots per day."}
                 </p>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Display any submission errors */}
+        {errors.submission && (
+          <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <i className="fas fa-exclamation-circle text-red-400"></i>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Error</h3>
+                <div className="mt-1 text-sm text-red-700">
+                  <p>{errors.submission}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-4">
           <DaySelection

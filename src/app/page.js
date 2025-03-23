@@ -16,6 +16,7 @@ import TimeSlotModal from "@/components/timeslot/TimeSlotModal";
 import LeaveRequestModal from "@/components/leave/LeaveRequestModal";
 import AppointmentModal from "@/components/appointment/AppointmentModal";
 import { getDoctorInfo, logoutDoctor, addDoctorTimeSlot } from "@/services/api";
+import { formatApiError } from "@/utils/errorHandler";
 
 const App = () => {
   const [selectedTab, setSelectedTab] = useState("dashboard");
@@ -478,23 +479,7 @@ const App = () => {
         return response;
       } catch (error) {
         infoDiv.remove();
-        
-        // Create user-friendly error message based on the error
-        let userMessage = "There was a problem with your time slot.";
-        
-        if (error.message.includes("overlaps with existing time slot")) {
-          userMessage = "This time slot overlaps with an existing time slot. Please choose a different time.";
-        } else if (error.message.includes("Time slot with start time")) {
-          userMessage = "Could not find the time slot you're trying to edit. It may have been deleted.";
-        } else if (error.message.includes("There is not timeslot avaiable")) {
-          userMessage = "No time slots exist for this day yet. Please add a new time slot first.";
-        } else if (error.message.includes("Validation failed")) {
-          userMessage = "Please check your input. Some values are not valid.";
-        } else if (error.message.includes("Doctor not found")) {
-          userMessage = "Your doctor profile is not accessible. Please log in again.";
-        }
-        
-        throw new Error(userMessage);
+        throw error; // Re-throw to be handled in the outer catch block
       }
     } catch (error) {
       console.error(
@@ -510,14 +495,18 @@ const App = () => {
         existingInfoDiv.remove();
       }
 
-      // Show error notification with details
+      // Format the error message in a user-friendly way
+      const context = isEditMode ? "updating time slot" : "adding time slot";
+      const userMessage = formatApiError(error, context);
+
+      // Show error notification with formatted message
       const errorDiv = document.createElement("div");
       errorDiv.className =
         "fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex flex-col";
       errorDiv.innerHTML = `
         <div class="flex items-center">
           <i class="fas fa-exclamation-circle mr-2"></i>
-          <span>${error.message}</span>
+          <span>${userMessage}</span>
         </div>
       `;
       document.body.appendChild(errorDiv);
