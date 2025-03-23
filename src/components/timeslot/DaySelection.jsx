@@ -1,6 +1,10 @@
 import React from "react";
 
-export default function DaySelection({ selectedDay, onChange }) {
+export default function DaySelection({
+  selectedDay,
+  onChange,
+  disabled = false,
+}) {
   const weekdays = [
     "Monday",
     "Tuesday",
@@ -17,7 +21,10 @@ export default function DaySelection({ selectedDay, onChange }) {
       <select
         value={selectedDay}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-emerald-500"
+        disabled={disabled}
+        className={`w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-emerald-500 ${
+          disabled ? "bg-gray-100 cursor-not-allowed" : ""
+        }`}
       >
         {weekdays.map((day) => (
           <option key={day} value={day}>
@@ -25,6 +32,11 @@ export default function DaySelection({ selectedDay, onChange }) {
           </option>
         ))}
       </select>
+      {disabled && (
+        <p className="mt-1 text-xs text-gray-500">
+          Day cannot be changed when editing a time slot
+        </p>
+      )}
     </div>
   );
 }

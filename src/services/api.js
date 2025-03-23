@@ -228,13 +228,11 @@ export const logoutDoctor = async (username) => {
 };
 
 /**
- * Add a time slot for a doctor using the correct endpoint
+ * Add a time slot for a doctor using the addTimeSlot endpoint
  * @param {Object} timeSlotData - Time slot data to add
  * @returns {Promise<Object>} - Response data
  */
 export const addDoctorTimeSlot = async (timeSlotData) => {
-  console.log("Adding time slot with correct API format");
-
   try {
     // Format the data to match the backend API expectations
     const formattedData = {
@@ -244,19 +242,101 @@ export const addDoctorTimeSlot = async (timeSlotData) => {
       },
     };
 
-    console.log(
-      "Formatted time slot data:",
-      JSON.stringify(formattedData, null, 2)
-    );
-
     // Call the correct API endpoint
     return await apiCall("doctor/addTimeSlot", {
       method: "PATCH",
       body: JSON.stringify(formattedData),
     });
   } catch (error) {
-    console.error("Failed to add time slot:", error);
-    throw new Error("Failed to add time slot: " + error.message);
+    // Transform error message to a user-friendly version
+    let errorMessage = "Failed to add time slot.";
+
+    if (error.message.includes("overlaps with existing time slot")) {
+      errorMessage =
+        "This time conflicts with another scheduled slot. Please choose a different time.";
+    } else if (error.message.includes("Doctor not found")) {
+      errorMessage =
+        "Your profile information could not be found. Please log in again.";
+    } else if (error.message.includes("Validation failed")) {
+      errorMessage =
+        "The time slot information is not valid. Please check all fields.";
+    }
+
+    throw new Error(errorMessage);
+  }
+};
+
+/**
+ * Update an existing time slot
+ * @param {Object} updateData - Data for updating the time slot
+ * @returns {Promise<Object>} - Response data
+ */
+export const updateDoctorTimeSlot = async (updateData) => {
+  try {
+    // Format the data to match the backend API expectations
+    const formattedData = {
+      timeSlotToBeUpdated: {
+        dayName: updateData.dayName,
+        slots: updateData.slots,
+      },
+    };
+
+    return await apiCall("doctor/updateTimeSlot", {
+      method: "PATCH",
+      body: JSON.stringify(formattedData),
+    });
+  } catch (error) {
+    // Transform error message to a user-friendly version
+    let errorMessage = "Failed to update time slot.";
+
+    if (error.message.includes("There is not timeslot avaiable")) {
+      errorMessage =
+        "This time slot no longer exists. It may have been deleted.";
+    } else if (error.message.includes("Doctor not found")) {
+      errorMessage =
+        "Your profile information could not be found. Please log in again.";
+    } else if (error.message.includes("Something went wrong while finding")) {
+      errorMessage = "We couldn't find the time slot you're trying to update.";
+    }
+
+    throw new Error(errorMessage);
+  }
+};
+
+/**
+ * Delete a time slot
+ * @param {Object} deleteData - Data identifying the time slot to delete
+ * @returns {Promise<Object>} - Response data
+ */
+export const deleteDoctorTimeSlot = async (deleteData) => {
+  try {
+    // Format the data to match the backend API expectations
+    const formattedData = {
+      timeSlotToBeDeleted: {
+        dayName: deleteData.dayName,
+        slots: deleteData.slots,
+      },
+    };
+
+    return await apiCall("doctor/deleteTimeSlot", {
+      method: "PATCH",
+      body: JSON.stringify(formattedData),
+    });
+  } catch (error) {
+    // Transform error message to a user-friendly version
+    let errorMessage = "Failed to delete time slot.";
+
+    if (error.message.includes("Time slot with start time")) {
+      errorMessage =
+        "We couldn't find this time slot. It may have already been deleted.";
+    } else if (error.message.includes("There is not timeslot avaiable")) {
+      errorMessage = "No time slots exist for this day.";
+    } else if (error.message.includes("Doctor not found")) {
+      errorMessage =
+        "Your profile information could not be found. Please log in again.";
+    }
+
+    throw new Error(errorMessage);
   }
 };
 

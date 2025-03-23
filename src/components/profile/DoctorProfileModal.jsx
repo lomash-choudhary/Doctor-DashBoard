@@ -11,6 +11,7 @@ export default function DoctorProfileModal({
   setShowProfileModal,
   doctorProfile,
   setShowTimeSlotModal,
+  setSelectedSlot,
 }) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
@@ -139,11 +140,14 @@ export default function DoctorProfileModal({
                           start: slot.startTime,
                           end: slot.endTime,
                           isAvailable: slot.status === "ACTIVE",
+                          capacity: slot.maxPatientsInTheSlot,
                         }));
                         return acc;
                       }, {})
                     : {}
                 }
+                setShowTimeSlotModal={setShowTimeSlotModal}
+                setSelectedSlot={setSelectedSlot}
               />
             )}
           </div>
@@ -159,6 +163,7 @@ export default function DoctorProfileModal({
           </button>
           <button
             onClick={() => {
+              setSelectedSlot(null); // Reset selected slot for new entry
               setShowTimeSlotModal(true);
               setShowProfileModal(false);
             }}

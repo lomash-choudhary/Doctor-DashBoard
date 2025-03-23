@@ -1,10 +1,20 @@
-import { getLocalTimeSlots } from "@/services/api";
+import { useState } from "react";
+import {
+  getLocalTimeSlots,
+  deleteDoctorTimeSlot,
+  getDoctorInfo,
+} from "@/services/api";
+import TimeSlotActionMenu from "./timeslot/TimeSlotActionMenu";
 
 export default function Schedule({
   doctorProfile,
   setShowLeaveModal,
   setShowTimeSlotModal,
+  setSelectedSlot, // Add this prop
 }) {
+  const [activeDay, setActiveDay] = useState("Monday");
+  const [loading, setLoading] = useState(false);
+
   // Early return with loading message if doctorProfile is undefined or null
   if (!doctorProfile) {
     return (
@@ -72,15 +82,97 @@ export default function Schedule({
 
   const availability = formatTimeSlots();
 
-  // Get Monday slots or default to empty array
-  const mondaySlots = Array.isArray(availability.Monday)
-    ? availability.Monday
+  // Get active day slots or default to empty array
+  const activeDaySlots = Array.isArray(availability[activeDay])
+    ? availability[activeDay]
     : [];
 
   // Create a default empty array for leaves if they don't exist
   const leaves = Array.isArray(doctorProfile.leaves)
     ? doctorProfile.leaves
     : [];
+
+  // Handle time slot deletion
+  const handleDeleteTimeSlot = async (slot) => {
+    if (!window.confirm("Are you sure you want to delete this time slot?")) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // Format the delete data
+      const deleteData = {
+        dayName: activeDay,
+        slots: [
+          {
+            startTime: slot.start,
+            endTime: slot.end,
+          },
+        ],
+      };
+
+      // Display loading notification
+      const loadingDiv = document.createElement("div");
+      loadingDiv.className =
+        "fixed top-4 right-4 bg-blue-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
+      loadingDiv.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Deleting time slot...`;
+      document.body.appendChild(loadingDiv);
+
+      // Call API to delete the time slot
+      await deleteDoctorTimeSlot(deleteData);
+
+      loadingDiv.remove();
+
+      // Show success notification
+      const successDiv = document.createElement("div");
+      successDiv.className =
+        "fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
+      successDiv.innerHTML = `<i class="fas fa-check-circle mr-2"></i> Time slot deleted successfully!`;
+      document.body.appendChild(successDiv);
+
+      // Refresh the doctor profile
+      const username = localStorage.getItem("doctorUsername");
+      const updatedDataResponse = await getDoctorInfo(username);
+      // Force page reload to reflect changes
+      window.location.reload();
+
+      setTimeout(() => successDiv.remove(), 3000);
+    } catch (error) {
+      console.error("Failed to delete time slot:", error);
+
+      // Show error notification
+      const errorDiv = document.createElement("div");
+      errorDiv.className =
+        "fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
+      errorDiv.innerHTML = `<i class="fas fa-exclamation-circle mr-2"></i> Failed to delete time slot: ${error.message}`;
+      document.body.appendChild(errorDiv);
+      setTimeout(() => errorDiv.remove(), 5000);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle edit button click - pass slot data to parent component
+  const handleEditTimeSlot = (slot) => {
+    // Set the selected slot for editing
+    const slotForEdit = {
+      day: activeDay,
+      start: slot.start,
+      end: slot.end,
+      capacity: slot.capacity || 1,
+      isRecurring: slot.isRecurring,
+      status: slot.status || "ACTIVE",
+      isEditMode: true,
+      originalStart: slot.start, // Keep track of original start time for updating
+    };
+
+    // Set the selected slot using the setter from props
+    setSelectedSlot(slotForEdit);
+
+    // Open the modal with the selected slot data
+    setShowTimeSlotModal(true);
+  };
 
   return (
     <div className="space-y-6">
@@ -97,7 +189,10 @@ export default function Schedule({
             Request Leave
           </button>
           <button
-            onClick={() => setShowTimeSlotModal(true)}
+            onClick={() => {
+              setSelectedSlot(null); // Reset selected slot for a new slot
+              setShowTimeSlotModal(true);
+            }}
             className="bg-emerald-500 text-white px-4 py-2 text-sm font-medium rounded-lg hover:bg-emerald-600 transition duration-300 !rounded-button whitespace-nowrap flex items-center"
           >
             <i className="fas fa-plus mr-2"></i>
@@ -106,21 +201,21 @@ export default function Schedule({
         </div>
       </div>
 
-      {/* Development mode banner */}
-      <div className="bg-amber-50 border-l-4 border-amber-400 p-4 mb-4 rounded">
+      {/* API Info */}
+      <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4 rounded">
         <div className="flex">
           <div className="flex-shrink-0">
-            <i className="fas fa-code text-amber-400"></i>
+            <i className="fas fa-info-circle text-blue-400"></i>
           </div>
           <div className="ml-3">
-            <h3 className="text-sm font-medium text-amber-800">
-              Developer Note
+            <h3 className="text-sm font-medium text-blue-800">
+              Time Slot Management
             </h3>
-            <div className="mt-1 text-sm text-amber-700">
+            <div className="mt-1 text-sm text-blue-700">
               <p>
-                The time slot API is currently under development. Any time slots
-                you add are stored temporarily in your browser and will be lost
-                if you clear your browser data.
+                You can now add multiple time slots per day, update existing
+                time slots, and delete time slots. Click on the actions menu
+                (...) next to a slot to edit or delete it.
               </p>
             </div>
           </div>
@@ -139,19 +234,20 @@ export default function Schedule({
         ].map((day) => (
           <div
             key={day}
-            className={`flex-1 py-4 text-center ${
-              day === "Monday"
+            className={`flex-1 py-4 text-center cursor-pointer ${
+              day === activeDay
                 ? "border-b-2 border-emerald-500 text-emerald-500"
-                : "text-gray-500"
+                : "text-gray-500 hover:text-gray-700"
             }`}
+            onClick={() => setActiveDay(day)}
           >
             {day}
           </div>
         ))}
       </div>
       <div className="mt-6 space-y-4">
-        {mondaySlots.length > 0 ? (
-          mondaySlots.map((slot, index) => (
+        {activeDaySlots.length > 0 ? (
+          activeDaySlots.map((slot, index) => (
             <div
               key={index}
               className={`flex items-center p-4 border rounded-lg ${
@@ -187,15 +283,26 @@ export default function Schedule({
                   Local Only
                 </span>
               )}
+
+              {/* Actions menu */}
+              <div className="ml-auto">
+                <TimeSlotActionMenu
+                  onEdit={() => handleEditTimeSlot(slot)}
+                  onDelete={() => handleDeleteTimeSlot(slot)}
+                  isDisabled={loading}
+                />
+              </div>
             </div>
           ))
         ) : (
           <div className="text-center py-6 text-gray-500">
-            No time slots defined for Monday. Click "Add Time Slot" to create
-            one.
+            No time slots defined for {activeDay}. Click "Add Time Slot" to
+            create one.
           </div>
         )}
       </div>
+
+      {/* Leave requests section */}
       <div className="mt-8">
         <h3 className="text-xl font-semibold text-gray-800 mb-4">
           Upcoming Leaves

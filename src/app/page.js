@@ -25,6 +25,7 @@ const App = () => {
   const [showTimeSlotModal, setShowTimeSlotModal] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showHospitalsModal, setShowHospitalsModal] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState(null); // Add this state for editing time slots
   const [newTimeSlot, setNewTimeSlot] = useState({
     day: "Monday",
     start: "09:00",
@@ -429,66 +430,77 @@ const App = () => {
   }, [doctorProfile, loading]); // Add doctorProfile as dependency
 
   // Function to add a new time slot
-  const addTimeSlot = async (timeSlotData) => {
+  const addTimeSlot = async (timeSlotData, isEditMode = false) => {
     try {
       setLoading(true);
-
-      // Format the time slot data for the API to match the expected backend format
-      const formattedTimeSlot = {
-        dayName: timeSlotData.day,
-        slots: [
-          {
-            startTime: timeSlotData.start,
-            endTime: timeSlotData.end,
-            maxPatientsInTheSlot: timeSlotData.capacity || 1,
-            status: "ACTIVE",
-            recurring: timeSlotData.isRecurring,
-            // Add exceptions array (empty by default)
-            exceptions: timeSlotData.exceptions || [],
-            // Add date range if not recurring
-            ...(timeSlotData.isRecurring
-              ? {}
-              : {
-                  startDate: timeSlotData.startDate,
-                  endDate: timeSlotData.endDate,
-                }),
-          },
-        ],
-      };
-
-      console.log("Sending formatted time slot data:", formattedTimeSlot);
 
       // Display a temporary message for the user to understand what's happening
       const infoDiv = document.createElement("div");
       infoDiv.className =
         "fixed top-4 right-4 bg-blue-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
-      infoDiv.innerHTML = `<i class="fas fa-info-circle mr-2"></i> Adding new time slot...`;
+      infoDiv.innerHTML = `<i class="fas fa-info-circle mr-2"></i> ${
+        isEditMode ? "Updating" : "Adding"
+      } time slot...`;
       document.body.appendChild(infoDiv);
 
-      // Call the API to add the time slot
-      const response = await addDoctorTimeSlot(formattedTimeSlot);
+      // Call the API to add or update the time slot
+      let response;
+      try {
+        if (isEditMode) {
+          response = await updateDoctorTimeSlot(timeSlotData);
+        } else {
+          response = await addDoctorTimeSlot(timeSlotData);
+        }
 
-      infoDiv.remove();
+        infoDiv.remove();
 
-      // Handle successful response
-      console.log("Time slot update response:", response);
+        // Handle successful response
+        console.log(
+          `Time slot ${isEditMode ? "update" : "add"} response:`,
+          response
+        );
 
-      // Show success notification
-      const successDiv = document.createElement("div");
-      successDiv.className =
-        "fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
-      successDiv.innerHTML = `<i class="fas fa-check-circle mr-2"></i> Time slot added successfully!`;
-      document.body.appendChild(successDiv);
+        // Show success notification
+        const successDiv = document.createElement("div");
+        successDiv.className =
+          "fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg z-50 shadow-lg flex items-center";
+        successDiv.innerHTML = `<i class="fas fa-check-circle mr-2"></i> Time slot ${
+          isEditMode ? "updated" : "added"
+        } successfully!`;
+        document.body.appendChild(successDiv);
 
-      // Refresh doctor data to show the new time slot
-      const username = localStorage.getItem("doctorUsername");
-      const updatedDataResponse = await getDoctorInfo(username);
-      setDoctorProfile(updatedDataResponse.data);
+        // Refresh doctor data to show the new time slot
+        const username = localStorage.getItem("doctorUsername");
+        const updatedDataResponse = await getDoctorInfo(username);
+        setDoctorProfile(updatedDataResponse.data);
 
-      setTimeout(() => successDiv.remove(), 3000);
-      return response;
+        setTimeout(() => successDiv.remove(), 3000);
+        return response;
+      } catch (error) {
+        infoDiv.remove();
+        
+        // Create user-friendly error message based on the error
+        let userMessage = "There was a problem with your time slot.";
+        
+        if (error.message.includes("overlaps with existing time slot")) {
+          userMessage = "This time slot overlaps with an existing time slot. Please choose a different time.";
+        } else if (error.message.includes("Time slot with start time")) {
+          userMessage = "Could not find the time slot you're trying to edit. It may have been deleted.";
+        } else if (error.message.includes("There is not timeslot avaiable")) {
+          userMessage = "No time slots exist for this day yet. Please add a new time slot first.";
+        } else if (error.message.includes("Validation failed")) {
+          userMessage = "Please check your input. Some values are not valid.";
+        } else if (error.message.includes("Doctor not found")) {
+          userMessage = "Your doctor profile is not accessible. Please log in again.";
+        }
+        
+        throw new Error(userMessage);
+      }
     } catch (error) {
-      console.error("Failed to add time slot:", error);
+      console.error(
+        `Failed to ${isEditMode ? "update" : "add"} time slot:`,
+        error
+      );
 
       // Remove modal info div if it exists
       const existingInfoDiv = document.querySelector(
@@ -505,10 +517,7 @@ const App = () => {
       errorDiv.innerHTML = `
         <div class="flex items-center">
           <i class="fas fa-exclamation-circle mr-2"></i>
-          <span>Failed to add time slot: ${error.message}</span>
-        </div>
-        <div class="mt-2 text-xs">
-          Please check the console for more details.
+          <span>${error.message}</span>
         </div>
       `;
       document.body.appendChild(errorDiv);
@@ -598,6 +607,7 @@ const App = () => {
               doctorProfile={doctorProfile}
               setShowLeaveModal={setShowLeaveModal}
               setShowTimeSlotModal={setShowTimeSlotModal}
+              setSelectedSlot={setSelectedSlot} // Pass the setter to Schedule
             />
           )}
           {selectedTab === "hospitals" && (
@@ -620,6 +630,7 @@ const App = () => {
         setShowProfileModal={setShowProfileModal}
         doctorProfile={doctorProfile}
         setShowTimeSlotModal={setShowTimeSlotModal}
+        setSelectedSlot={setSelectedSlot} // Pass the setter to the modal
       />
 
       {/* Time Slot Management Modal */}
@@ -630,6 +641,7 @@ const App = () => {
         setNewTimeSlot={setNewTimeSlot}
         onSubmit={addTimeSlot}
         isLoading={loading}
+        selectedSlot={selectedSlot} // Now selectedSlot is defined
       />
 
       {/* Leave Request Modal */}

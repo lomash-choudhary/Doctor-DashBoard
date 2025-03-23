@@ -1,11 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import ModalHeader from "../common/ModalHeader";
 import DaySelection from "./DaySelection";
 import TimeSelection from "./TimeSelection";
 import RecurringOption from "./RecurringOption";
-import DateRangeSelection from "./DateRangeSelection";
-import ModalActions from "./ModalActions";
 import ExceptionsSection from "./ExceptionsSection";
+import ModalActions from "./ModalActions";
 
 export default function TimeSlotModal({
   showTimeSlotModal,
@@ -14,12 +13,24 @@ export default function TimeSlotModal({
   setNewTimeSlot,
   onSubmit,
   isLoading,
+  selectedSlot = null,
 }) {
   const [errors, setErrors] = useState({});
-  const [manualEndpoint, setManualEndpoint] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [apiStatus, setApiStatus] = useState(null);
   const [exceptions, setExceptions] = useState([]);
+
+  // Determine if we're in edit mode
+  const isEditMode = selectedSlot?.isEditMode || false;
+
+  // Initialize form with selected slot data if in edit mode
+  useEffect(() => {
+    if (selectedSlot && selectedSlot.isEditMode) {
+      setNewTimeSlot(selectedSlot);
+      if (selectedSlot.exceptions) {
+        setExceptions(selectedSlot.exceptions);
+      }
+    }
+  }, [selectedSlot, setNewTimeSlot]);
 
   // Validation function
   const validateTimeSlot = () => {
@@ -47,18 +58,22 @@ export default function TimeSlotModal({
 
     // Validate date range if not recurring
     if (!newTimeSlot.isRecurring) {
+      // We're keeping only the exceptions when not recurring,
+      // but we still need these dates on the backend
       if (!newTimeSlot.startDate) {
-        newErrors.startDate = "Start date is required";
+        // Set today as default if not provided
+        const today = new Date().toISOString().split("T")[0];
+        setNewTimeSlot({ ...newTimeSlot, startDate: today });
       }
 
       if (!newTimeSlot.endDate) {
-        newErrors.endDate = "End date is required";
-      } else if (
-        newTimeSlot.startDate &&
-        newTimeSlot.endDate &&
-        new Date(newTimeSlot.startDate) > new Date(newTimeSlot.endDate)
-      ) {
-        newErrors.endDate = "End date must be after start date";
+        // Set a default end date if not provided (30 days from today)
+        const defaultEndDate = new Date();
+        defaultEndDate.setDate(defaultEndDate.getDate() + 30);
+        setNewTimeSlot({
+          ...newTimeSlot,
+          endDate: defaultEndDate.toISOString().split("T")[0],
+        });
       }
     }
 
@@ -78,27 +93,59 @@ export default function TimeSlotModal({
     setExceptions(updatedExceptions);
   };
 
-  // Handle submission - updated to include exceptions
+  // Handle submission - updated to include exceptions and handle edit mode
   const handleSubmit = () => {
     if (validateTimeSlot()) {
-      // Show the data that's being sent to the backend - helpful for debugging
-      console.log("Sending time slot data:", {
+      // Create time slot data with exceptions
+      const timeSlotData = {
         ...newTimeSlot,
         exceptions,
-      });
-
-      // Display the data format in a more visible way
-      const dataStr = JSON.stringify({ ...newTimeSlot, exceptions }, null, 2);
-      console.log("Data structure:", dataStr);
+      };
 
       // Set API status to show endpoint info is being gathered
       setApiStatus("pending");
 
-      // If manual endpoint is provided, use it
-      const endpoint = manualEndpoint.trim() || null;
+      // Prepare data differently based on add or edit mode
+      const payload = isEditMode
+        ? {
+            // Format for update
+            dayName: timeSlotData.day,
+            slots: [
+              {
+                startTime: timeSlotData.originalStart, // Use original start time to find the slot
+                endTime: timeSlotData.end, // Current end time for identification
+                newStartTime: timeSlotData.start, // New start time for update
+                newEndTime: timeSlotData.end, // New end time for update
+                maxPatientsInTheSlot: timeSlotData.capacity,
+                status: timeSlotData.status || "ACTIVE",
+                recurring: timeSlotData.isRecurring,
+                exceptions: timeSlotData.exceptions || [],
+              },
+            ],
+          }
+        : {
+            // Format for add
+            dayName: timeSlotData.day,
+            slots: [
+              {
+                startTime: timeSlotData.start,
+                endTime: timeSlotData.end,
+                maxPatientsInTheSlot: timeSlotData.capacity || 1,
+                status: timeSlotData.status || "ACTIVE",
+                recurring: timeSlotData.isRecurring,
+                exceptions: timeSlotData.exceptions || [],
+                ...(timeSlotData.isRecurring
+                  ? {}
+                  : {
+                      startDate: timeSlotData.startDate,
+                      endDate: timeSlotData.endDate,
+                    }),
+              },
+            ],
+          };
 
       // Pass the data with exceptions to parent component
-      onSubmit({ ...newTimeSlot, exceptions }, endpoint)
+      onSubmit(payload, isEditMode)
         .then(() => {
           setApiStatus("success");
           // Only close modal on success
@@ -115,7 +162,6 @@ export default function TimeSlotModal({
             capacity: 1,
           });
           setExceptions([]);
-          setManualEndpoint("");
         })
         .catch((error) => {
           console.error("Time slot submission error:", error);
@@ -127,27 +173,18 @@ export default function TimeSlotModal({
 
   if (!showTimeSlotModal) return null;
 
-  // Set current date as default for date fields if they're empty
+  // Set current date as default for exceptions
   const today = new Date().toISOString().split("T")[0];
-
-  // For startDate, use existing value or today
-  const startDateValue = newTimeSlot.startDate || today;
-
-  // For endDate, use existing value or 7 days from today
-  const defaultEndDate = new Date();
-  defaultEndDate.setDate(defaultEndDate.getDate() + 7);
-  const endDateValue =
-    newTimeSlot.endDate || defaultEndDate.toISOString().split("T")[0];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <ModalHeader
-          title="Add New Time Slot"
+          title={isEditMode ? "Edit Time Slot" : "Add New Time Slot"}
           onClose={() => setShowTimeSlotModal(false)}
         />
 
-        {/* Update this info banner */}
+        {/* Info banner */}
         <div className="mb-6 bg-blue-50 border-l-4 border-blue-400 p-4 rounded">
           <div className="flex">
             <div className="flex-shrink-0">
@@ -155,13 +192,13 @@ export default function TimeSlotModal({
             </div>
             <div className="ml-3">
               <h3 className="text-sm font-medium text-blue-800">
-                Schedule Update
+                {isEditMode ? "Update Time Slot" : "Add Time Slot"}
               </h3>
               <div className="mt-2 text-sm text-blue-700">
                 <p>
-                  Adding a time slot will update your doctor profile with the
-                  new availability. Make sure all details are correct before
-                  submitting.
+                  {isEditMode
+                    ? "Update the details of this time slot. Changes will be saved to your schedule."
+                    : "Add a new time slot to your schedule. You can add multiple slots per day."}
                 </p>
               </div>
             </div>
@@ -172,6 +209,7 @@ export default function TimeSlotModal({
           <DaySelection
             selectedDay={newTimeSlot.day}
             onChange={(day) => setNewTimeSlot({ ...newTimeSlot, day })}
+            disabled={isEditMode} // Can't change day when editing
           />
 
           <TimeSelection
@@ -208,90 +246,67 @@ export default function TimeSlotModal({
             )}
           </div>
 
+          {/* Status selection */}
+          <div>
+            <label className="block text-gray-700 mb-2">
+              Status <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={newTimeSlot.status || "ACTIVE"}
+              onChange={(e) =>
+                setNewTimeSlot({
+                  ...newTimeSlot,
+                  status: e.target.value,
+                })
+              }
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-emerald-500"
+            >
+              <option value="ACTIVE">Active</option>
+              <option value="INACTIVE">Inactive</option>
+            </select>
+          </div>
+
           <RecurringOption
             isRecurring={newTimeSlot.isRecurring}
             onChange={(isRecurring) => {
               setNewTimeSlot({
                 ...newTimeSlot,
                 isRecurring,
-                // Initialize dates when switching to non-recurring
+                // Silently set date fields in the background if not recurring
                 ...(isRecurring
                   ? {}
                   : {
-                      startDate: startDateValue,
-                      endDate: endDateValue,
+                      startDate: today,
+                      endDate: new Date(
+                        new Date().setDate(new Date().getDate() + 30)
+                      )
+                        .toISOString()
+                        .split("T")[0],
                     }),
               });
             }}
           />
 
+          {/* Add exceptions section always visible when not recurring */}
           {!newTimeSlot.isRecurring && (
-            <DateRangeSelection
-              startDate={startDateValue}
-              endDate={endDateValue}
-              onStartDateChange={(startDate) =>
-                setNewTimeSlot({ ...newTimeSlot, startDate })
-              }
-              onEndDateChange={(endDate) =>
-                setNewTimeSlot({ ...newTimeSlot, endDate })
-              }
-              errors={errors}
-            />
-          )}
-
-          {/* Add exceptions section */}
-          {!newTimeSlot.isRecurring && (
-            <ExceptionsSection 
+            <ExceptionsSection
               exceptions={exceptions}
               onAddException={handleAddException}
               onRemoveException={handleRemoveException}
             />
           )}
-
-          {/* Developer settings - always visible now */}
-          <div className="mt-4 pt-2 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="text-xs text-gray-500 flex items-center"
-            >
-              <i
-                className={`fas fa-chevron-${
-                  showAdvanced ? "up" : "down"
-                } mr-1`}
-              ></i>
-              Advanced Settings (Developer)
-            </button>
-
-            {showAdvanced && (
-              <div className="mt-2 p-3 bg-gray-50 rounded-md">
-                <div className="text-xs text-gray-700 mb-2 font-medium">
-                  Manual Endpoint Configuration:
-                </div>
-                <input
-                  type="text"
-                  value={manualEndpoint}
-                  onChange={(e) => setManualEndpoint(e.target.value)}
-                  placeholder="/doctor/updateTimeSlot"
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                />
-                <div className="text-xs text-gray-500 mt-1 space-y-1">
-                  <p>
-                    This will be added after {window.location.origin}/api/v1
-                  </p>
-                  <p className="italic text-amber-600">
-                    Check API Documentation for supported endpoints.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
         <ModalActions
           onCancel={() => setShowTimeSlotModal(false)}
           onSubmit={handleSubmit}
-          submitText={apiStatus === "error" ? "Try Again" : "Update Schedule"}
+          submitText={
+            apiStatus === "error"
+              ? "Try Again"
+              : isEditMode
+              ? "Update Time Slot"
+              : "Add Time Slot"
+          }
           isLoading={isLoading}
         />
       </div>
