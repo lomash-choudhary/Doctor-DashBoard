@@ -5,7 +5,7 @@ import TimeSelection from "./TimeSelection";
 import RecurringOption from "./RecurringOption";
 import ExceptionsSection from "./ExceptionsSection";
 import ModalActions from "./ModalActions";
-import { formatTo12Hour } from "@/utils/timeFormatter";
+import { formatTo12Hour, getTimeDisplay } from "@/utils/timeFormatter";
 import { formatApiError } from "@/utils/errorHandler";
 
 export default function TimeSlotModal({
@@ -27,10 +27,24 @@ export default function TimeSlotModal({
   // Initialize form with selected slot data if in edit mode
   useEffect(() => {
     if (selectedSlot && selectedSlot.isEditMode) {
-      setNewTimeSlot(selectedSlot);
-      if (selectedSlot.exceptions) {
-        setExceptions(selectedSlot.exceptions);
+      // Make a copy to avoid direct state modifications
+      const slotDataForEdit = { ...selectedSlot };
+
+      // Ensure start and end times are properly set
+      // This is the fix - we make sure these values are always present
+      if (!slotDataForEdit.start && slotDataForEdit.originalStart) {
+        slotDataForEdit.start = slotDataForEdit.originalStart;
       }
+
+      // Set the state with the complete data
+      setNewTimeSlot(slotDataForEdit);
+
+      // Set exceptions if they exist
+      if (slotDataForEdit.exceptions) {
+        setExceptions(slotDataForEdit.exceptions);
+      }
+
+      console.log("Initializing edit form with data:", slotDataForEdit);
     }
   }, [selectedSlot, setNewTimeSlot]);
 
@@ -190,9 +204,11 @@ export default function TimeSlotModal({
   // Set current date as default for exceptions
   const today = new Date().toISOString().split("T")[0];
 
-  // Display formatted times
-  const startTimeFormatted = formatTo12Hour(newTimeSlot.start);
-  const endTimeFormatted = formatTo12Hour(newTimeSlot.end);
+  // Display formatted times - use the saved formatted times if available
+  const startTimeFormatted =
+    selectedSlot?.startFormatted || getTimeDisplay(newTimeSlot.start);
+  const endTimeFormatted =
+    selectedSlot?.endFormatted || getTimeDisplay(newTimeSlot.end);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -241,12 +257,20 @@ export default function TimeSlotModal({
         )}
 
         <div className="space-y-4">
+          {/* Day Selection */}
           <DaySelection
             selectedDay={newTimeSlot.day}
             onChange={(day) => setNewTimeSlot({ ...newTimeSlot, day })}
             disabled={isEditMode} // Can't change day when editing
           />
 
+          {/* Time Selection - add debug info to help troubleshoot */}
+          {console.log("Rendering TimeSelection with values:", {
+            startTime: newTimeSlot.start,
+            endTime: newTimeSlot.end,
+            formattedStart: startTimeFormatted,
+            formattedEnd: endTimeFormatted,
+          })}
           <TimeSelection
             startTime={newTimeSlot.start}
             endTime={newTimeSlot.end}
@@ -322,14 +346,13 @@ export default function TimeSlotModal({
             }}
           />
 
-          {/* Add exceptions section always visible when not recurring */}
-          {!newTimeSlot.isRecurring && (
-            <ExceptionsSection
-              exceptions={exceptions}
-              onAddException={handleAddException}
-              onRemoveException={handleRemoveException}
-            />
-          )}
+          {/* Add exceptions section - always pass the selected day */}
+          <ExceptionsSection
+            exceptions={exceptions}
+            onAddException={handleAddException}
+            onRemoveException={handleRemoveException}
+            selectedDay={newTimeSlot.day} // Pass the selected day for validation
+          />
         </div>
 
         <ModalActions

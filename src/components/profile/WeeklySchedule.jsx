@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import TimeSlotDetailsModal from "../timeslot/TimeSlotDetailsModal";
-import { formatTo12Hour } from "@/utils/timeFormatter";
+import ExceptionBadge from "../timeslot/ExceptionBadge";
+import { getTimeDisplay } from "@/utils/timeFormatter";
 
 export default function WeeklySchedule({
   availability,
@@ -38,18 +39,25 @@ export default function WeeklySchedule({
 
   // Handle edit button click - prepare slot data for editing
   const handleEditSlot = (day, slot) => {
-    // Create slot data for editing
+    // Create slot data for editing - ensure all required fields are included
     const slotForEdit = {
       day: day,
-      start: slot.start,
-      end: slot.end,
+      start: slot.start, // Keep original format
+      end: slot.end, // Keep original format
+      startFormatted: slot.startFormatted, // Keep display format
+      endFormatted: slot.endFormatted, // Keep display format
       capacity: slot.capacity || 1,
-      isRecurring: true, // Weekly schedule slots are always recurring
-      status: slot.isAvailable ? "ACTIVE" : "INACTIVE",
+      isRecurring: slot.isRecurring || true, // Weekly schedule slots are usually recurring
+      status: slot.status || (slot.isAvailable ? "ACTIVE" : "INACTIVE"),
       exceptions: slot.exceptions || [],
       isEditMode: true,
-      originalStart: slot.start, // Track original start time for updating
+      originalStart: slot.start, // Track original time for updating
     };
+
+    console.log(
+      "Setting up edit for time slot from profile view:",
+      slotForEdit
+    );
 
     // Set selected slot and open modal
     setSelectedSlot(slotForEdit);
@@ -76,15 +84,61 @@ export default function WeeklySchedule({
     return slot.exceptions && slot.exceptions.length > 0;
   };
 
-  // Enhance each slot with formatted time
+  // Enhance each slot with formatted time and upcoming exceptions
   const enhancedAvailability = {};
   for (const [day, slots] of Object.entries(availability || {})) {
     enhancedAvailability[day] = Array.isArray(slots)
-      ? slots.map((slot) => ({
-          ...slot,
-          startFormatted: formatTo12Hour(slot.start),
-          endFormatted: formatTo12Hour(slot.end),
-        }))
+      ? slots.map((slot) => {
+          console.log(`Processing slot for ${day}:`, JSON.stringify(slot));
+
+          // Ensure exceptions are properly parsed and normalized
+          const normalizedExceptions = Array.isArray(slot.exceptions)
+            ? slot.exceptions.map((exception) => {
+                console.log(`Exception data:`, JSON.stringify(exception));
+                return {
+                  ...exception,
+                  expectedDateOfException:
+                    exception.expectedDateOfException || null,
+                };
+              })
+            : [];
+
+          // Calculate upcoming exceptions
+          const upcomingExceptions = normalizedExceptions
+            .filter((exception) => {
+              if (!exception.expectedDateOfException) {
+                console.warn(
+                  "Exception missing expectedDateOfException:",
+                  exception
+                );
+                return false;
+              }
+              const exceptionDate = new Date(exception.expectedDateOfException);
+              const today = new Date();
+              return !isNaN(exceptionDate) && exceptionDate >= today;
+            })
+            .sort(
+              (a, b) =>
+                new Date(a.expectedDateOfException) -
+                new Date(b.expectedDateOfException)
+            )
+            .slice(0, 2); // Limit to 2 most recent for display
+
+          console.log(
+            `Found ${upcomingExceptions.length} upcoming exceptions for ${day} slot`
+          );
+
+          return {
+            ...slot,
+            // Use the time display utility that respects backend formats
+            startFormatted: getTimeDisplay(slot.start),
+            endFormatted: getTimeDisplay(slot.end),
+            exceptions: normalizedExceptions,
+            upcomingExceptions: upcomingExceptions,
+            // Track if this slot has exceptions
+            hasExceptions: normalizedExceptions.length > 0,
+          };
+        })
       : [];
   }
 
@@ -128,59 +182,98 @@ export default function WeeklySchedule({
                   {enhancedAvailability[day].map((slot, index) => (
                     <div
                       key={index}
-                      className={`flex items-center justify-between px-3 py-1.5 rounded-md text-sm ${
+                      className={`rounded-md text-sm transition-all duration-300 ${
                         slot.isAvailable
                           ? "bg-green-50 text-green-700 border border-green-200"
                           : "bg-red-50 text-red-700 border border-red-200"
                       } ${
-                        hasExceptions(slot) ? "border-red-300 bg-red-50" : ""
+                        slot.hasExceptions ? "border-red-300 shadow-sm" : ""
                       }`}
                     >
-                      <div
-                        className="flex items-center flex-grow cursor-pointer"
-                        onClick={() => handleViewDetails(day, slot)}
-                      >
-                        <i
-                          className={`fas fa-${
-                            slot.isAvailable ? "clock" : "times-circle"
-                          } mr-1`}
-                        ></i>
-                        <span>
-                          {slot.startFormatted} - {slot.endFormatted}
-                        </span>
-
-                        {slot.capacity && (
-                          <span className="ml-2 text-xs bg-white bg-opacity-60 px-1 py-0.5 rounded">
-                            {slot.capacity} patients
-                          </span>
-                        )}
-
-                        {/* Display exception marker if present */}
-                        {hasExceptions(slot) && (
-                          <span className="ml-2 text-xs text-red-600">
-                            <i className="fas fa-exclamation-circle"></i>
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center space-x-2">
-                        {/* Edit button */}
-                        <button
-                          onClick={() => handleEditSlot(day, slot)}
-                          className="text-blue-500 hover:text-blue-700"
-                          title="Edit time slot"
-                        >
-                          <i className="fas fa-edit"></i>
-                        </button>
-
-                        {/* Info/Details button */}
-                        <button
+                      <div className="p-2">
+                        <div
+                          className="flex items-center justify-between cursor-pointer"
                           onClick={() => handleViewDetails(day, slot)}
-                          className="text-gray-500 hover:text-gray-700"
-                          title="View details"
                         >
-                          <i className="fas fa-info-circle"></i>
-                        </button>
+                          <div className="flex items-center">
+                            {slot.hasExceptions ? (
+                              <div className="relative mr-2">
+                                <i className="fas fa-clock text-red-500"></i>
+                                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                              </div>
+                            ) : (
+                              <i
+                                className={`fas fa-clock text-green-600 mr-2`}
+                              ></i>
+                            )}
+                            <span>
+                              {slot.startFormatted} - {slot.endFormatted}
+                            </span>
+
+                            {!slot.isRecurring && (
+                              <span className="ml-2 bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full text-xs">
+                                Non-recurring
+                              </span>
+                            )}
+
+                            {slot.capacity && (
+                              <span className="ml-2 text-xs bg-white bg-opacity-80 px-1.5 py-0.5 rounded">
+                                {slot.capacity} patients
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            {/* Edit button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditSlot(day, slot);
+                              }}
+                              className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-1 rounded-full transition-colors"
+                              title="Edit time slot"
+                            >
+                              <i className="fas fa-edit"></i>
+                            </button>
+
+                            {/* Info/Details button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewDetails(day, slot);
+                              }}
+                              className="text-gray-500 hover:text-gray-700 hover:bg-gray-50 p-1 rounded-full transition-colors"
+                              title="View details"
+                            >
+                              <i className="fas fa-info-circle"></i>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Display upcoming exceptions directly in the card */}
+                        {slot.upcomingExceptions &&
+                          slot.upcomingExceptions.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1.5 items-center border-t border-red-200 pt-1.5">
+                              <span className="text-xs text-red-600 font-medium">
+                                <i className="fas fa-exclamation-circle mr-1"></i>
+                                Unavailable:
+                              </span>
+                              {slot.upcomingExceptions.map((exception, idx) => (
+                                <ExceptionBadge
+                                  key={idx}
+                                  exception={exception}
+                                  compact={true}
+                                />
+                              ))}
+
+                              {/* Additional exceptions indicator */}
+                              {(slot.exceptions?.length || 0) > 2 && (
+                                <span className="text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
+                                  +{(slot.exceptions?.length || 0) - 2} more
+                                </span>
+                              )}
+                            </div>
+                          )}
                       </div>
                     </div>
                   ))}

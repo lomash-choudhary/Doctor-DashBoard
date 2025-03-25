@@ -141,6 +141,10 @@ export default function DoctorProfileModal({
                           end: slot.endTime,
                           isAvailable: slot.status === "ACTIVE",
                           capacity: slot.maxPatientsInTheSlot,
+                          // Add more properties needed for exception display
+                          isRecurring: slot.recurring,
+                          exceptions: slot.exceptions || [],
+                          status: slot.status,
                         }));
                         return acc;
                       }, {})

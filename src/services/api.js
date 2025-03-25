@@ -2,6 +2,7 @@
 const API_URL = "http://localhost:4000/api/v1";
 
 import { formatApiError } from "@/utils/errorHandler";
+import { formatTo12Hour, formatTo24Hour } from "@/utils/timeFormatter";
 
 /**
  * Base API call function with authorization headers
@@ -236,11 +237,21 @@ export const logoutDoctor = async (username) => {
  */
 export const addDoctorTimeSlot = async (timeSlotData) => {
   try {
+    // Format times to include AM/PM format for the backend
+    const formattedSlots = timeSlotData.slots.map(slot => ({
+      ...slot,
+      startTime: formatTo12Hour(slot.startTime),
+      endTime: formatTo12Hour(slot.endTime),
+      // If there are new times for update
+      ...(slot.newStartTime ? { newStartTime: formatTo12Hour(slot.newStartTime) } : {}),
+      ...(slot.newEndTime ? { newEndTime: formatTo12Hour(slot.newEndTime) } : {})
+    }));
+
     // Format the data to match the backend API expectations
     const formattedData = {
       timeSlotToBeAdded: {
         dayName: timeSlotData.dayName,
-        slots: timeSlotData.slots,
+        slots: formattedSlots,
       },
     };
 
@@ -262,11 +273,21 @@ export const addDoctorTimeSlot = async (timeSlotData) => {
  */
 export const updateDoctorTimeSlot = async (updateData) => {
   try {
+    // Format times to include AM/PM format for the backend
+    const formattedSlots = updateData.slots.map(slot => ({
+      ...slot,
+      startTime: formatTo12Hour(slot.startTime),
+      endTime: formatTo12Hour(slot.endTime),
+      // If there are new times for update
+      ...(slot.newStartTime ? { newStartTime: formatTo12Hour(slot.newStartTime) } : {}),
+      ...(slot.newEndTime ? { newEndTime: formatTo12Hour(slot.newEndTime) } : {})
+    }));
+
     // Format the data to match the backend API expectations
     const formattedData = {
       timeSlotToBeUpdated: {
         dayName: updateData.dayName,
-        slots: updateData.slots,
+        slots: formattedSlots,
       },
     };
 

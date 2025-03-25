@@ -5,6 +5,12 @@
  */
 export const formatTo12Hour = (time24h) => {
   if (!time24h) return "";
+
+  // If time already includes AM/PM, return it as is
+  if (time24h.includes("AM") || time24h.includes("PM")) {
+    return time24h;
+  }
+
   try {
     // Parse hours and minutes
     const [hours, minutes] = time24h
@@ -34,6 +40,12 @@ export const formatTo12Hour = (time24h) => {
  */
 export const formatTo24Hour = (time12h) => {
   if (!time12h) return "";
+
+  // If time doesn't include AM/PM, assume it's already in 24h format
+  if (!time12h.includes("AM") && !time12h.includes("PM")) {
+    return time12h;
+  }
+
   try {
     // Parse the time and period
     const [timePart, period] = time12h.split(" ");
@@ -61,4 +73,26 @@ export const formatTo24Hour = (time12h) => {
     console.error("Error formatting time to 24-hour:", error);
     return time12h; // Return original on error
   }
+};
+
+/**
+ * Get the raw time string from backend without attempting to reformat
+ * @param {string} timeString - Time string from backend
+ * @returns {string} - Original time or formatted if needed
+ */
+export const getTimeDisplay = (timeString) => {
+  if (!timeString) return "";
+
+  // If already has AM/PM, return it as is
+  if (timeString.includes("AM") || timeString.includes("PM")) {
+    return timeString;
+  }
+
+  // Check if it's in 24-hour format and convert to 12-hour only if needed
+  if (timeString.includes(":")) {
+    return formatTo12Hour(timeString);
+  }
+
+  // Return original if not in a standard format
+  return timeString;
 };

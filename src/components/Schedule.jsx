@@ -6,8 +6,9 @@ import {
 } from "@/services/api";
 import TimeSlotActionMenu from "./timeslot/TimeSlotActionMenu";
 import TimeSlotDetailsModal from "./timeslot/TimeSlotDetailsModal";
-import { formatTo12Hour } from "@/utils/timeFormatter";
+import { formatTo12Hour, getTimeDisplay } from "@/utils/timeFormatter";
 import { formatApiError } from "@/utils/errorHandler";
+import ExceptionBadge from "./timeslot/ExceptionBadge";
 
 export default function Schedule({
   doctorProfile,
@@ -60,18 +61,74 @@ export default function Schedule({
 
         if (daySlot.slots && Array.isArray(daySlot.slots)) {
           // Map each slot to the format expected by the UI
-          const formattedSlots = daySlot.slots.map((slot) => ({
-            start: slot.startTime,
-            end: slot.endTime,
-            startFormatted: formatTo12Hour(slot.startTime),
-            endFormatted: formatTo12Hour(slot.endTime),
-            capacity: slot.maxPatientsInTheSlot,
-            isRecurring: slot.recurring,
-            status: slot.status,
-            exceptions: slot.exceptions || [],
-            // Add a flag for locally stored slots
-            isLocalOnly: !!slot.isLocalOnly,
-          }));
+          const formattedSlots = daySlot.slots.map((slot) => {
+            console.log(
+              `Processing slot for ${dayName}:`,
+              JSON.stringify(slot)
+            );
+
+            // Ensure exceptions are properly parsed and normalized
+            const normalizedExceptions = Array.isArray(slot.exceptions)
+              ? slot.exceptions.map((exception) => {
+                  console.log(`Exception data:`, JSON.stringify(exception));
+                  // If _id exists but no status or date, it might be a reference that needs to be expanded
+                  if (
+                    exception._id &&
+                    (!exception.status || !exception.expectedDateOfException)
+                  ) {
+                    console.warn("Incomplete exception data:", exception);
+                  }
+                  return {
+                    ...exception,
+                    // Make sure expectedDateOfException is a proper date string if it exists
+                    expectedDateOfException:
+                      exception.expectedDateOfException || null,
+                  };
+                })
+              : [];
+
+            // Calculate upcoming exceptions
+            const upcomingExceptions = normalizedExceptions
+              .filter((exception) => {
+                if (!exception.expectedDateOfException) {
+                  console.warn(
+                    "Exception missing expectedDateOfException:",
+                    exception
+                  );
+                  return false;
+                }
+                const exceptionDate = new Date(
+                  exception.expectedDateOfException
+                );
+                const today = new Date();
+                return !isNaN(exceptionDate) && exceptionDate >= today;
+              })
+              .sort(
+                (a, b) =>
+                  new Date(a.expectedDateOfException) -
+                  new Date(b.expectedDateOfException)
+              )
+              .slice(0, 3); // Limit to 3 most recent for display
+
+            console.log(
+              `Found ${upcomingExceptions.length} upcoming exceptions for ${dayName} slot (${slot.startTime}-${slot.endTime})`
+            );
+
+            return {
+              start: slot.startTime,
+              end: slot.endTime,
+              startFormatted: getTimeDisplay(slot.startTime),
+              endFormatted: getTimeDisplay(slot.endTime),
+              capacity: slot.maxPatientsInTheSlot,
+              isRecurring: slot.recurring,
+              status: slot.status,
+              exceptions: normalizedExceptions,
+              upcomingExceptions: upcomingExceptions,
+              isLocalOnly: !!slot.isLocalOnly,
+              // Add this property to easily check if it has exceptions
+              hasExceptions: normalizedExceptions.length > 0,
+            };
+          });
 
           // Add the formatted slots to the day
           if (formattedAvailability[dayName]) {
@@ -177,18 +234,22 @@ export default function Schedule({
 
   // Handle edit button click - pass slot data to parent component
   const handleEditTimeSlot = (slot) => {
-    // Set the selected slot for editing
+    // Set the selected slot for editing - ensure all required fields are included
     const slotForEdit = {
       day: activeDay,
-      start: slot.start,
-      end: slot.end,
+      start: slot.start, // Preserve original time format from backend
+      end: slot.end, // Preserve original time format from backend
+      startFormatted: slot.startFormatted, // Keep the display format
+      endFormatted: slot.endFormatted, // Keep the display format
       capacity: slot.capacity || 1,
-      isRecurring: slot.isRecurring,
+      isRecurring: slot.isRecurring || false,
       status: slot.status || "ACTIVE",
       exceptions: slot.exceptions || [],
       isEditMode: true,
-      originalStart: slot.start, // Keep track of original start time for updating
+      originalStart: slot.start, // Keep original for backend reference
     };
+
+    console.log("Setting up edit for time slot:", slotForEdit);
 
     // Set the selected slot using the setter from props
     setSelectedSlot(slotForEdit);
@@ -199,7 +260,9 @@ export default function Schedule({
 
   // Check if a slot has any exceptions
   const hasExceptions = (slot) => {
-    return slot.exceptions && slot.exceptions.length > 0;
+    return (
+      slot.hasExceptions || (slot.exceptions && slot.exceptions.length > 0)
+    );
   };
 
   // Count upcoming exceptions (within the next 30 days)
@@ -243,27 +306,6 @@ export default function Schedule({
         </div>
       </div>
 
-      {/* API Info */}
-      <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4 rounded">
-        <div className="flex">
-          <div className="flex-shrink-0">
-            <i className="fas fa-info-circle text-blue-400"></i>
-          </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800">
-              Time Slot Management
-            </h3>
-            <div className="mt-1 text-sm text-blue-700">
-              <p>
-                Click on a time slot to view detailed information, including
-                patient capacity and exceptions. Use the actions menu (...) to
-                edit or delete.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="flex border-b">
         {[
           "Monday",
@@ -292,58 +334,99 @@ export default function Schedule({
           activeDaySlots.map((slot, index) => (
             <div
               key={index}
-              className={`border rounded-lg overflow-hidden ${
+              className={`border rounded-lg overflow-hidden transition-all duration-300 ${
                 slot.isLocalOnly ? "border-amber-200" : "border-gray-200"
-              } ${hasExceptions(slot) ? "border-red-200" : ""}`}
+              } ${
+                hasExceptions(slot)
+                  ? "border-red-200 shadow-sm hover:shadow-md"
+                  : "hover:border-emerald-200"
+              }`}
             >
               {/* Main slot information - clickable to show details */}
               <div
-                className={`flex items-center p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                className={`flex flex-col md:flex-row md:items-center p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
                   slot.isLocalOnly ? "bg-amber-50" : ""
-                } ${hasExceptions(slot) ? "bg-red-50" : ""}`}
+                } ${
+                  hasExceptions(slot)
+                    ? "bg-gradient-to-r from-red-50 to-white"
+                    : ""
+                }`}
                 onClick={() => handleViewDetails(slot)}
               >
-                <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                <span className="ml-4 text-gray-900 font-medium">
-                  {slot.startFormatted} - {slot.endFormatted}
-                </span>
-                <span className="ml-4 px-3 py-1 bg-emerald-50 text-emerald-500 text-sm rounded-full">
-                  {slot.isRecurring ? "Weekly" : "One-time"}
-                </span>
-                {slot.capacity && (
-                  <span className="ml-4 text-gray-600 text-sm">
-                    Capacity: {slot.capacity} patients
-                  </span>
-                )}
-                {slot.status && (
-                  <span
-                    className={`ml-4 px-3 py-1 text-xs rounded-full ${
-                      slot.status === "ACTIVE"
-                        ? "bg-green-100 text-green-600"
-                        : "bg-red-100 text-red-600"
-                    }`}
-                  >
-                    {slot.status}
-                  </span>
-                )}
+                <div className="flex items-center flex-grow">
+                  <div
+                    className={`w-2 h-10 ${
+                      hasExceptions(slot) ? "bg-red-500" : "bg-emerald-500"
+                    } rounded-full mr-4`}
+                  ></div>
+                  <div>
+                    <div className="flex items-center">
+                      <span className="text-gray-900 font-medium mr-2">
+                        {slot.startFormatted} - {slot.endFormatted}
+                      </span>
+                      <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-xs rounded-full">
+                        {slot.isRecurring ? "Weekly" : "One-time"}
+                      </span>
+                      {slot.capacity && (
+                        <span className="ml-2 text-gray-600 text-xs px-2 py-1 bg-gray-100 rounded-full flex items-center">
+                          <i className="fas fa-user-friends text-gray-400 mr-1"></i>
+                          {slot.capacity}
+                        </span>
+                      )}
+                      {slot.status && (
+                        <span
+                          className={`ml-2 px-2 py-1 text-xs rounded-full flex items-center ${
+                            slot.status === "ACTIVE"
+                              ? "bg-green-100 text-green-600"
+                              : "bg-red-100 text-red-600"
+                          }`}
+                        >
+                          <i
+                            className={`fas fa-${
+                              slot.status === "ACTIVE"
+                                ? "check-circle"
+                                : "times-circle"
+                            } mr-1`}
+                          ></i>
+                          {slot.status}
+                        </span>
+                      )}
+                    </div>
 
-                {/* Show exceptions badge if there are any */}
-                {hasExceptions(slot) && (
-                  <span className="ml-4 px-3 py-1 text-xs rounded-full bg-red-100 text-red-600 flex items-center">
-                    <i className="fas fa-exclamation-circle mr-1"></i>
-                    {countUpcomingExceptions(slot)} exceptions
-                  </span>
-                )}
+                    {/* Display upcoming exceptions directly in the card */}
+                    {slot.upcomingExceptions &&
+                      slot.upcomingExceptions.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2 items-center">
+                          <span className="text-xs text-red-600 font-medium">
+                            <i className="fas fa-exclamation-circle mr-1"></i>
+                            {!slot.isRecurring
+                              ? "Non-recurring - Unavailable except:"
+                              : "Unavailable on:"}
+                          </span>
+                          {slot.upcomingExceptions.map((exception, idx) => (
+                            <ExceptionBadge key={idx} exception={exception} />
+                          ))}
+
+                          {/* Show indicator for additional exceptions */}
+                          {countUpcomingExceptions(slot) > 3 && (
+                            <span className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded-full">
+                              +{countUpcomingExceptions(slot) - 3} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+                  </div>
+                </div>
 
                 {slot.isLocalOnly && (
-                  <span className="ml-auto px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded mr-2">
+                  <span className="ml-auto px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded mr-2 flex items-center">
                     <i className="fas fa-exclamation-triangle mr-1"></i>
                     Local Only
                   </span>
                 )}
 
                 {/* Actions menu */}
-                <div className="ml-auto">
+                <div className="ml-auto mt-2 md:mt-0">
                   <TimeSlotActionMenu
                     onEdit={() => handleEditTimeSlot(slot)}
                     onDelete={() => handleDeleteTimeSlot(slot)}
@@ -354,9 +437,33 @@ export default function Schedule({
             </div>
           ))
         ) : (
-          <div className="text-center py-6 text-gray-500">
-            No time slots defined for {activeDay}. Click "Add Time Slot" to
-            create one.
+          <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+            <div className="text-gray-400 mb-3">
+              <i className="fas fa-calendar-times text-4xl"></i>
+            </div>
+            <h3 className="text-gray-500 font-medium mb-1">
+              No time slots defined
+            </h3>
+            <p className="text-gray-400 text-sm mb-4">
+              Click "Add Time Slot" to create a schedule for {activeDay}
+            </p>
+            <button
+              onClick={() => {
+                setSelectedSlot({
+                  day: activeDay,
+                  start: "09:00",
+                  end: "17:00",
+                  isRecurring: true,
+                  capacity: 1,
+                  status: "ACTIVE",
+                });
+                setShowTimeSlotModal(true);
+              }}
+              className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors inline-flex items-center"
+            >
+              <i className="fas fa-plus-circle mr-2"></i>
+              Add Time Slot
+            </button>
           </div>
         )}
       </div>
