@@ -15,7 +15,7 @@ import DoctorProfileModal from "@/components/profile/DoctorProfileModal";
 import TimeSlotModal from "@/components/timeslot/TimeSlotModal";
 import LeaveRequestModal from "@/components/leave/LeaveRequestModal";
 import AppointmentModal from "@/components/appointment/AppointmentModal";
-import { getDoctorInfo, logoutDoctor, addDoctorTimeSlot } from "@/services/api";
+import { getDoctorInfo, logoutDoctor, addDoctorTimeSlot, updateDoctorTimeSlot } from "@/services/api";
 import { formatApiError } from "@/utils/errorHandler";
 
 const App = () => {
